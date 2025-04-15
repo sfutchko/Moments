@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "360445790626",
+    "project_id": "moments-for-mom",
+    "storage_bucket": "moments-for-mom.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:360445790626:android:fee76d8ee291dfe175cafb",
+        "android_client_info": {
+          "package_name": "com.example.mothers_day"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "360445790626-9go0ckl24stcpsgek6v91o0bg6iievf6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA0Hi76X6hsXJjS-AbhcgW0e32tO_i_0qI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "360445790626-9go0ckl24stcpsgek6v91o0bg6iievf6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
