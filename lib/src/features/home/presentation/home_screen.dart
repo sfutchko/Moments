@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart'; // Import for compute
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:palette_generator/palette_generator.dart'; // Import palette_generator
+import 'package:flutter/services.dart' show rootBundle; // Import for rootBundle
 
 import '../../../services/auth_service.dart';
 import '../../../services/database_service.dart';
@@ -12,154 +15,6 @@ import '../../../models/project.dart';
 import '../../moment_detail/presentation/moment_detail_screen.dart';
 import '../../create_moment/presentation/create_moment_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
-
-// Specialized class to hold background colors
-class BackgroundColors {
-  final List<Color> colors;
-  const BackgroundColors(this.colors);
-  
-  // Predefined gradients
-  static const BackgroundColors defaultColors = BackgroundColors([
-    Colors.black,
-    Color(0xFF1E1E1E),
-    Color(0xFF242424),
-  ]);
-  
-  static const List<BackgroundColors> themeColors = [
-    // Blue theme
-    BackgroundColors([
-      Colors.black,
-      Color(0xFF1A1A2E),
-      Color(0xFF16213E),
-    ]),
-    // Bronze theme
-    BackgroundColors([
-      Colors.black, 
-      Color(0xFF231F20),
-      Color(0xFF2D2424),
-    ]),
-    // Green theme
-    BackgroundColors([
-      Colors.black,
-      Color(0xFF1A2F2F),
-      Color(0xFF1F3B3B),
-    ]),
-  ];
-  
-  // Factory method to get colors by index
-  static BackgroundColors forIndex(int index) {
-    if (index < 0) return defaultColors;
-    return themeColors[index % themeColors.length];
-  }
-}
-
-// InheritedWidget to provide background colors
-class BackgroundColorProvider extends InheritedWidget {
-  final BackgroundColors colors;
-  
-  const BackgroundColorProvider({
-    Key? key,
-    required this.colors,
-    required Widget child,
-  }) : super(key: key, child: child);
-  
-  static BackgroundColorProvider of(BuildContext context) {
-    final result = context.dependOnInheritedWidgetOfExactType<BackgroundColorProvider>();
-    assert(result != null, 'No BackgroundColorProvider found in context');
-    return result!;
-  }
-  
-  @override
-  bool updateShouldNotify(BackgroundColorProvider oldWidget) {
-    return colors != oldWidget.colors;
-  }
-}
-
-// Add a completely separate background widget
-class AdaptiveBackground extends StatefulWidget {
-  final Widget child;
-  final int currentIndex;
-  
-  const AdaptiveBackground({
-    super.key,
-    required this.child,
-    required this.currentIndex,
-  });
-  
-  @override
-  State<AdaptiveBackground> createState() => _AdaptiveBackgroundState();
-}
-
-class _AdaptiveBackgroundState extends State<AdaptiveBackground> {
-  // Predefined gradients for each image type
-  final List<List<Color>> _themeGradients = [
-    // Blue theme
-    [
-      Colors.black,
-      const Color(0xFF1A1A2E),
-      const Color(0xFF16213E),
-    ],
-    // Bronze theme
-    [
-      Colors.black, 
-      const Color(0xFF231F20),
-      const Color(0xFF2D2424),
-    ],
-    // Green theme
-    [
-      Colors.black,
-      const Color(0xFF1A2F2F),
-      const Color(0xFF1F3B3B),
-    ],
-  ];
-  
-  @override
-  Widget build(BuildContext context) {
-    // Get the current gradient from the index
-    final colors = _themeGradients[widget.currentIndex % _themeGradients.length];
-    
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: colors,
-          stops: const [0.0, 0.6, 1.0],
-        ),
-      ),
-      child: widget.child,
-    );
-  }
-}
-
-// Background container that uses the colors from provider
-class GradientBackground extends StatelessWidget {
-  final Widget child;
-  
-  const GradientBackground({
-    Key? key,
-    required this.child,
-  }) : super(key: key);
-  
-  @override
-  Widget build(BuildContext context) {
-    final colors = BackgroundColorProvider.of(context).colors;
-    
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: colors.colors,
-          stops: const [0.0, 0.6, 1.0],
-        ),
-      ),
-      child: child,
-    );
-  }
-}
 
 // Replace SF Pro Rounded text style extension with Nunito text styles
 extension NunitoText on TextTheme {
@@ -186,49 +41,6 @@ extension NunitoText on TextTheme {
     fontSize: 16,
     fontWeight: FontWeight.w600,
   );
-}
-
-// Background provider to separate state from UI
-class BackgroundState extends ChangeNotifier {
-  int _currentIndex = 0;
-  
-  // Predefined gradients for each theme
-  final List<List<Color>> _themeGradients = [
-    // Blue theme
-    [
-      Colors.black,
-      const Color(0xFF1A1A2E),
-      const Color(0xFF16213E),
-    ],
-    // Bronze theme
-    [
-      Colors.black, 
-      const Color(0xFF231F20),
-      const Color(0xFF2D2424),
-    ],
-    // Green theme
-    [
-      Colors.black,
-      const Color(0xFF1A2F2F),
-      const Color(0xFF1F3B3B),
-    ],
-  ];
-  
-  int get currentIndex => _currentIndex;
-  
-  List<Color> get currentGradient {
-    final gradient = _themeGradients[_currentIndex % _themeGradients.length];
-    print("Getting gradient for index $_currentIndex: $gradient");
-    return gradient;
-  }
-      
-  void updateIndex(int newIndex) {
-    if (newIndex != _currentIndex && newIndex >= 0) {
-      print("Updating background index from $_currentIndex to $newIndex");
-      _currentIndex = newIndex;
-      notifyListeners();
-    }
-  }
 }
 
 class HomeScreen extends StatelessWidget {
@@ -401,42 +213,135 @@ class MomentsPageView extends StatefulWidget {
 
 class _MomentsPageViewState extends State<MomentsPageView> {
   int _currentIndex = 0;
-  
-  // Predefined gradients for each theme
-  final List<List<Color>> _themeGradients = [
-    // Blue theme
-    [
-      Colors.black,
-      const Color(0xFF1A1A2E),
-      const Color(0xFF16213E),
-    ],
-    // Bronze theme
-    [
-      Colors.black, 
-      const Color(0xFF231F20),
-      const Color(0xFF2D2424),
-    ],
-    // Green theme
-    [
-      Colors.black,
-      const Color(0xFF1A2F2F),
-      const Color(0xFF1F3B3B),
-    ],
+  final Map<int, List<Color>> _gradientCache = {};
+  List<Color> _currentGradient = [ 
+    Colors.black,
+    const Color(0xFF231F20),
+    const Color(0xFF2D2424),
   ];
-  
+
+  @override
+  void initState() {
+    super.initState();
+    print('[MomentsPageView] initState - Initializing background.');
+    if (widget.moments.isNotEmpty) {
+      _updateBackgroundForPage(0);
+    } else {
+      print('[MomentsPageView] initState - No moments, using default background.');
+    }
+  }
+
+  // New instance method for palette generation on main isolate
+  Future<List<Color>> _generateGradientFromImagePath(String imagePath) async {
+    print('[PaletteGenerator] Starting extraction for: $imagePath (on main isolate)');
+    try {
+      final PaletteGenerator palette = await PaletteGenerator.fromImageProvider(
+        AssetImage(imagePath), // Use directly
+        // size: const Size(200, 200), // No size needed here either
+        maximumColorCount: 16, 
+      );
+      print('[PaletteGenerator] Palette generated for $imagePath. Dominant: ${palette.dominantColor?.color}, Vibrant: ${palette.vibrantColor?.color}, Muted: ${palette.mutedColor?.color}');
+
+      // Extract colors - prioritize vibrant, then dominant, then muted
+      Color color1 = Colors.black; 
+      Color color2 = palette.dominantColor?.color ?? const Color(0xFF2D2424); 
+      Color color3 = palette.darkMutedColor?.color ?? palette.darkVibrantColor?.color ?? const Color(0xFF1A1A1A);
+
+      if (palette.darkVibrantColor != null) {
+        color1 = palette.darkVibrantColor!.color;
+        color3 = Colors.black;
+      } else if (palette.darkMutedColor != null) {
+        color1 = palette.darkMutedColor!.color;
+        color3 = Colors.black;
+      }
+
+      if (palette.vibrantColor != null) {
+        color2 = palette.vibrantColor!.color;
+      } else if (palette.lightVibrantColor != null) {
+        color2 = palette.lightVibrantColor!.color;
+      } else if (palette.mutedColor != null) {
+        color2 = palette.mutedColor!.color;
+      }
+
+      if (color1 == color2) color2 = palette.lightMutedColor?.color ?? color2;
+      if (color2 == color3) color3 = palette.dominantColor?.color.withOpacity(0.7) ?? color3;
+
+      final resultGradient = [color1, color2, color3];
+      print('[PaletteGenerator] Result gradient for $imagePath: $resultGradient');
+      return resultGradient;
+
+    } catch (e) {
+      print('[PaletteGenerator] ERROR generating palette for $imagePath: $e');
+      return [ // Fallback gradient
+        Colors.black,
+        const Color(0xFF231F20),
+        const Color(0xFF2D2424),
+      ];
+    }
+  }
+
+  Future<void> _updateBackgroundForPage(int index) async {
+    if (!mounted) return; 
+    print('[MomentsPageView] _updateBackgroundForPage called for index: $index');
+
+    final imageIndex = index % 3; 
+    final imagePath = 'assets/images/${imageIndex + 1}.png';
+    print('[MomentsPageView] Corresponding image path: $imagePath (imageIndex: $imageIndex)');
+
+    if (_gradientCache.containsKey(imageIndex)) {
+      print('[MomentsPageView] Cache HIT for imageIndex: $imageIndex. Using cached gradient.');
+      if (mounted) {
+        setState(() {
+          _currentGradient = _gradientCache[imageIndex]!;
+           print('[MomentsPageView] setState (from cache) for index $index. New gradient: $_currentGradient');
+        });
+      }
+      return;
+    }
+
+    print('[MomentsPageView] Cache MISS for imageIndex: $imageIndex. Starting generation on main isolate...');
+    try {
+      // Call the new instance method directly - NO COMPUTE
+      final List<Color> newGradient = await _generateGradientFromImagePath(imagePath);
+      print('[MomentsPageView] Generation finished for index $index. Received gradient: $newGradient');
+
+      _gradientCache[imageIndex] = newGradient;
+      print('[MomentsPageView] Stored gradient in cache for imageIndex: $imageIndex');
+
+      if (mounted && index == _currentIndex) {
+        print('[MomentsPageView] Index $index matches current index $_currentIndex. Updating state...');
+        setState(() {
+          _currentGradient = newGradient;
+           print('[MomentsPageView] setState (after generation) for index $index. New gradient: $_currentGradient');
+        });
+      } else {
+         print('[MomentsPageView] Index $index DOES NOT match current index $_currentIndex. State not updated immediately.');
+      }
+    } catch (e) {
+        print("[MomentsPageView] ERROR during palette generation: $e");
+        if (mounted && index == _currentIndex) {
+          setState(() {
+            _currentGradient = [ Colors.black, Colors.red.shade900, Colors.black]; // Error gradient
+          });
+        }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currentGradient = _themeGradients[_currentIndex % _themeGradients.length];
+    // Use the _currentGradient state variable
+    print('[MomentsPageView] build method. Current index: $_currentIndex, Current gradient: $_currentGradient');
     final screenSize = MediaQuery.of(context).size;
-    
+
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 800), // Slightly longer duration for smoother feel
+      curve: Curves.easeInOut, // Add easing curve
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: currentGradient,
-          stops: const [0.0, 0.6, 1.0],
+          colors: _currentGradient, // Use state variable
+          stops: const [0.0, 0.6, 1.0], // Keep stops for now
         ),
       ),
       child: Center(
@@ -444,21 +349,25 @@ class _MomentsPageViewState extends State<MomentsPageView> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const SizedBox(height: 20), // Space at top
-            // Container with perfect height
             Container(
-              height: 550, // Increased to 550px for perfect height
+              height: 550,
               child: PageView.builder(
                 itemCount: widget.moments.length,
                 controller: PageController(viewportFraction: 0.9),
                 onPageChanged: (index) {
+                  if (!mounted) return;
+                  print('[MomentsPageView] onPageChanged - New index: $index');
                   setState(() {
-                    _currentIndex = index;
+                    _currentIndex = index; // Update index immediately for responsiveness
                   });
+                  // Trigger background update for the new page
+                  _updateBackgroundForPage(index);
                 },
                 itemBuilder: (context, index) {
+                  // Pass the correct imageIndex based on page index
+                  final imageIndexForCard = index % 3;
                   return Container(
                     margin: const EdgeInsets.symmetric(horizontal: 16.0),
-                    // Remove red border and use a less noticeable corner radius
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(25.0),
                       boxShadow: [
@@ -473,7 +382,8 @@ class _MomentsPageViewState extends State<MomentsPageView> {
                       borderRadius: BorderRadius.circular(22.0),
                       child: _SimpleMomentCard(
                         moment: widget.moments[index],
-                        imageIndex: index,
+                        // Pass the calculated imageIndex for the card's image path
+                        imageIndex: imageIndexForCard,
                         currentUserId: widget.userId,
                       ),
                     ),
@@ -527,30 +437,46 @@ class _SimpleMomentCard extends StatelessWidget {
                 Container(color: Colors.grey.shade800, child: const Center(child: Icon(Icons.broken_image))),
             ),
             
-            // Ultra-simple implementation matching reference exactly
+            // New implementation for the bottom gradient blur effect
             Positioned(
               bottom: 0,
-              left: 8,
-              right: 8,
-              height: 145, // Exact height 
+              left: 0, // Extend to screen edges
+              right: 0, // Extend to screen edges
+              height: 190.0, // Keep fixed height
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(25),
-                child: BackdropFilter(
-                  filter: ui.ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
-                  child: Container(
-                    color: Color.fromRGBO(200, 180, 210, 0.18),
-                    child: Center(
-                      child: Text(
-                        moment.title,
-                        style: GoogleFonts.openSans(
-                          color: Colors.white,
-                          fontSize: 42,
-                          fontWeight: FontWeight.w400,
-                        ),
+                // Round only the top corners
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(25.0), 
+                  topRight: Radius.circular(25.0),
+                ),
+                // Use a Container with a gradient simulating the faded blur
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      // Colors chosen to simulate the frosted look with fade - Increased opacity
+                      colors: [
+                        Colors.transparent,             // Start transparent
+                        const Color(0x4DFFFFFF),        // White @ 30% opacity
+                        const Color(0x7F9E9ABF),        // Light purplish grey @ 50% opacity
+                        const Color(0x998C89A6),        // Slightly darker purplish grey @ 60% opacity
+                      ],
+                      // Stops to control the fade and color transition
+                      stops: const [0.0, 0.15, 0.5, 1.0],
+                    ),
+                  ),
+                  child: Center( // Keep text centered
+                    child: Text(
+                      moment.title,
+                      style: GoogleFonts.openSans(
+                        color: Colors.white,
+                        fontSize: 42,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
                   ),
-                ),
+                ), 
               ),
             ),
             
