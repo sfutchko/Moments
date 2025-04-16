@@ -1,127 +1,238 @@
-import 'dart:async'; // Add this import
-import 'dart:ui' as ui; // Import dart:ui for ImageFilter
-import 'package:flutter/foundation.dart'; // Import for compute
+import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import User
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Timestamp if needed for formatting
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:palette_generator/palette_generator.dart';
 
 import '../../../services/auth_service.dart';
-import '../../../services/database_service.dart'; // Import DatabaseService
-import '../../../models/project.dart'; // Import Project model
-import '../../moment_detail/presentation/moment_detail_screen.dart'; // Import MomentDetailScreen
-import '../../create_moment/presentation/create_moment_screen.dart'; // Import CreateMomentScreen
+import '../../../services/database_service.dart';
+import '../../../models/project.dart';
+import '../../moment_detail/presentation/moment_detail_screen.dart';
+import '../../create_moment/presentation/create_moment_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 
-// Helper function to run color extraction in an isolate
-Future<List<Color>> _extractColorsIsolate(String imagePath) async {
-  try {
-    final palette = await PaletteGenerator.fromImageProvider(
-      AssetImage(imagePath),
-      size: const Size(100, 100), 
-      maximumColorCount: 5,
+// Specialized class to hold background colors
+class BackgroundColors {
+  final List<Color> colors;
+  const BackgroundColors(this.colors);
+  
+  // Predefined gradients
+  static const BackgroundColors defaultColors = BackgroundColors([
+    Colors.black,
+    Color(0xFF1E1E1E),
+    Color(0xFF242424),
+  ]);
+  
+  static const List<BackgroundColors> themeColors = [
+    // Blue theme
+    BackgroundColors([
+      Colors.black,
+      Color(0xFF1A1A2E),
+      Color(0xFF16213E),
+    ]),
+    // Bronze theme
+    BackgroundColors([
+      Colors.black, 
+      Color(0xFF231F20),
+      Color(0xFF2D2424),
+    ]),
+    // Green theme
+    BackgroundColors([
+      Colors.black,
+      Color(0xFF1A2F2F),
+      Color(0xFF1F3B3B),
+    ]),
+  ];
+  
+  // Factory method to get colors by index
+  static BackgroundColors forIndex(int index) {
+    if (index < 0) return defaultColors;
+    return themeColors[index % themeColors.length];
+  }
+}
+
+// InheritedWidget to provide background colors
+class BackgroundColorProvider extends InheritedWidget {
+  final BackgroundColors colors;
+  
+  const BackgroundColorProvider({
+    Key? key,
+    required this.colors,
+    required Widget child,
+  }) : super(key: key, child: child);
+  
+  static BackgroundColorProvider of(BuildContext context) {
+    final result = context.dependOnInheritedWidgetOfExactType<BackgroundColorProvider>();
+    assert(result != null, 'No BackgroundColorProvider found in context');
+    return result!;
+  }
+  
+  @override
+  bool updateShouldNotify(BackgroundColorProvider oldWidget) {
+    return colors != oldWidget.colors;
+  }
+}
+
+// Add a completely separate background widget
+class AdaptiveBackground extends StatefulWidget {
+  final Widget child;
+  final int currentIndex;
+  
+  const AdaptiveBackground({
+    super.key,
+    required this.child,
+    required this.currentIndex,
+  });
+  
+  @override
+  State<AdaptiveBackground> createState() => _AdaptiveBackgroundState();
+}
+
+class _AdaptiveBackgroundState extends State<AdaptiveBackground> {
+  // Predefined gradients for each image type
+  final List<List<Color>> _themeGradients = [
+    // Blue theme
+    [
+      Colors.black,
+      const Color(0xFF1A1A2E),
+      const Color(0xFF16213E),
+    ],
+    // Bronze theme
+    [
+      Colors.black, 
+      const Color(0xFF231F20),
+      const Color(0xFF2D2424),
+    ],
+    // Green theme
+    [
+      Colors.black,
+      const Color(0xFF1A2F2F),
+      const Color(0xFF1F3B3B),
+    ],
+  ];
+  
+  @override
+  Widget build(BuildContext context) {
+    // Get the current gradient from the index
+    final colors = _themeGradients[widget.currentIndex % _themeGradients.length];
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: colors,
+          stops: const [0.0, 0.6, 1.0],
+        ),
+      ),
+      child: widget.child,
     );
-    final dominant = palette.dominantColor?.color;
-    if (dominant != null) {
-      return [
-        Colors.black,
-        dominant.withOpacity(0.7),
-        dominant.withOpacity(0.4),
-      ];
-    }
-  } catch (e) {
-    print('Isolate color extraction error: $e');
   }
-  // Return default on error or no dominant color
-  return [Colors.black, const Color(0xFF1E1E1E), const Color(0xFF242424)];
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
-
+// Background container that uses the colors from provider
+class GradientBackground extends StatelessWidget {
+  final Widget child;
+  
+  const GradientBackground({
+    Key? key,
+    required this.child,
+  }) : super(key: key);
+  
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  Widget build(BuildContext context) {
+    final colors = BackgroundColorProvider.of(context).colors;
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: colors.colors,
+          stops: const [0.0, 0.6, 1.0],
+        ),
+      ),
+      child: child,
+    );
+  }
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  // Define PageController
-  late PageController _pageController;
+// Replace SF Pro Rounded text style extension with Nunito text styles
+extension NunitoText on TextTheme {
+  TextStyle get appTitle => GoogleFonts.nunito(
+    color: Colors.white,
+    fontSize: 42,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.5,
+  );
+  
+  TextStyle get appHeadline => GoogleFonts.nunito(
+    color: Colors.white, 
+    fontWeight: FontWeight.w700,
+    fontSize: 38,
+  );
+  
+  TextStyle get appSubtitle => GoogleFonts.nunito(
+    color: Colors.white70,
+    fontWeight: FontWeight.w500,
+    fontSize: 14,
+  );
+  
+  TextStyle get appButton => GoogleFonts.nunito(
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+  );
+}
+
+// Background provider to separate state from UI
+class BackgroundState extends ChangeNotifier {
   int _currentIndex = 0;
-  bool _areColorsPrecomputed = false;
   
-  // Background colors
-  final List<Color> _defaultGradient = [
-    Colors.black,
-    const Color(0xFF1E1E1E),
-    const Color(0xFF242424),
+  // Predefined gradients for each theme
+  final List<List<Color>> _themeGradients = [
+    // Blue theme
+    [
+      Colors.black,
+      const Color(0xFF1A1A2E),
+      const Color(0xFF16213E),
+    ],
+    // Bronze theme
+    [
+      Colors.black, 
+      const Color(0xFF231F20),
+      const Color(0xFF2D2424),
+    ],
+    // Green theme
+    [
+      Colors.black,
+      const Color(0xFF1A2F2F),
+      const Color(0xFF1F3B3B),
+    ],
   ];
   
-  List<Color> _currentGradient = [
-    Colors.black,
-    const Color(0xFF1E1E1E),
-    const Color(0xFF242424),
-  ];
+  int get currentIndex => _currentIndex;
   
-  // Cache for extracted colors
-  final Map<int, List<Color>> _colorCache = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(viewportFraction: 0.92);
+  List<Color> get currentGradient {
+    final gradient = _themeGradients[_currentIndex % _themeGradients.length];
+    print("Getting gradient for index $_currentIndex: $gradient");
+    return gradient;
   }
-  
-  // Precompute all colors when data is available
-  void _precomputeAllColors(List<Project> moments) async {
-    if (_areColorsPrecomputed || moments.isEmpty) return;
-    print("Starting precomputation of all colors...");
-    _areColorsPrecomputed = true; // Mark as started
-
-    for (int i = 0; i < moments.length; i++) {
-      if (!_colorCache.containsKey(i)) {
-        final String imagePath = 'assets/images/${(i % 3) + 1}.png';
-        // Use compute to run extraction in an isolate
-        try {
-          List<Color> colors = await compute(_extractColorsIsolate, imagePath);
-           if (mounted) {
-             _colorCache[i] = colors;
-             print("Precomputed color for index: $i");
-             // If it's the first item, apply its color immediately
-             if (i == 0) {
-                setState(() {
-                  _currentGradient = colors;
-                });
-             }
-           }
-        } catch(e) {
-           print("Error during compute for index $i: $e");
-           if(mounted) _colorCache[i] = _defaultGradient; // Cache default on error
-        }
-      }
-    }
-    print("Finished precomputation.");
-  }
-  
-  // Handle page changes - apply precomputed colors instantly
-  void _onPageChanged(int index) {
-    if (index != _currentIndex) {
-      print("Page changed to index: $index");
-      setState(() {
-        _currentIndex = index;
-        // Apply color directly from cache (should be precomputed)
-        _currentGradient = _colorCache[index] ?? _defaultGradient;
-        print("Applied color for index $index from cache (or default)");
-      });
+      
+  void updateIndex(int newIndex) {
+    if (newIndex != _currentIndex && newIndex >= 0) {
+      print("Updating background index from $_currentIndex to $newIndex");
+      _currentIndex = newIndex;
+      notifyListeners();
     }
   }
+}
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -132,114 +243,78 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 400), // Slightly faster animation
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: _currentGradient, 
-              stops: const [0.0, 0.6, 1.0],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // --- Custom Header Row ---
+            const SizedBox(height: 8.0),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Title with Nunito font
+                  Text(
+                    'Moments',
+                    style: theme.textTheme.appTitle,
+                  ),
+                  const Spacer(),
+                  // Add Button
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, color: Colors.white),
+                    iconSize: 28.0,
+                    tooltip: 'Create Moment',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const CreateMomentScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  // Profile Button
+                  IconButton(
+                    icon: const Icon(Icons.account_circle, color: Colors.white),
+                    iconSize: 28.0,
+                    tooltip: 'Settings',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- Custom Header Row ---
-              const SizedBox(height: 8.0),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Title
-                    Text(
-                      'Moments',
-                      style: GoogleFonts.montserrat(
-                        color: Colors.white,
-                        fontSize: 42,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const Spacer(),
-                    // Add Button
-                    IconButton(
-                      icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-                      iconSize: 28.0,
-                      tooltip: 'Create Moment',
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const CreateMomentScreen()),
-                        );
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    // Profile Button
-                    IconButton(
-                      icon: const Icon(Icons.account_circle, color: Colors.white),
-                      iconSize: 28.0,
-                      tooltip: 'Settings',
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              // --- Main Content Area (Empty or Carousel) ---
-              Expanded(
-                child: userId == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : StreamBuilder<List<Project>>(
-                        stream: dbService.getMomentsForUser(userId),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
-                          }
-                          if (snapshot.hasError) {
-                            return Center(child: Text('Error loading moments.', style: theme.textTheme.bodySmall));
-                          }
-                          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                            return _buildEmptyState(context);
-                          }
+            // --- Main Content Area (Empty or Carousel) ---
+            Expanded(
+              child: userId == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : StreamBuilder<List<Project>>(
+                      stream: dbService.getMomentsForUser(userId),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        if (snapshot.hasError) {
+                          return Center(child: Text('Error loading moments.', style: theme.textTheme.bodySmall));
+                        }
+                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                          return _buildEmptyState(context);
+                        }
 
-                          final moments = snapshot.data!;
-                          
-                          // Trigger precomputation if not already done
-                          if (!_areColorsPrecomputed) {
-                             // Run async precomputation without awaiting
-                             WidgetsBinding.instance.addPostFrameCallback((_) {
-                               _precomputeAllColors(moments);
-                             });
-                          }
-                          
-                          return PageView.builder(
-                            controller: _pageController,
-                            itemCount: moments.length,
-                            onPageChanged: _onPageChanged, // Use direct page change
-                            physics: const PageScrollPhysics(), 
-                            itemBuilder: (context, index) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 40.0),
-                                child: _MomentCarouselCard(
-                                  moment: moments[index],
-                                  imageIndex: index,
-                                  currentUserId: userId,
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
+                        final moments = snapshot.data!;
+                        
+                        // Use our new stateful content widget
+                        return MomentsPageView(
+                          moments: moments, 
+                          userId: userId,
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
       ),
     );
@@ -263,9 +338,10 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 24),
             Text(
               'No Upcoming Moments',
-              style: theme.textTheme.headlineSmall?.copyWith(
+              style: GoogleFonts.nunito(
                 color: Colors.white,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
+                fontSize: 22,
               ),
               textAlign: TextAlign.center,
             ),
@@ -274,7 +350,10 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 40.0),
               child: Text(
                 'Moments you create or are invited to will appear here.',
-                style: TextStyle(color: Colors.grey.shade400),
+                style: GoogleFonts.nunito(
+                  color: Colors.grey.shade400,
+                  fontWeight: FontWeight.w500,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -294,7 +373,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
-              child: const Text('Create Moment', style: TextStyle(fontSize: 16)),
+              child: Text('Create Moment', 
+                style: theme.textTheme.appButton.copyWith(color: Colors.black),
+              ),
             ),
           ],
         ),
@@ -303,13 +384,118 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- Moment Card Widget for Horizontal Carousel ---
-class _MomentCarouselCard extends StatelessWidget {
+// New StatefulWidget for the PageView and background
+class MomentsPageView extends StatefulWidget {
+  final List<Project> moments;
+  final String? userId;
+  
+  const MomentsPageView({
+    super.key,
+    required this.moments,
+    required this.userId,
+  });
+  
+  @override
+  State<MomentsPageView> createState() => _MomentsPageViewState();
+}
+
+class _MomentsPageViewState extends State<MomentsPageView> {
+  int _currentIndex = 0;
+  
+  // Predefined gradients for each theme
+  final List<List<Color>> _themeGradients = [
+    // Blue theme
+    [
+      Colors.black,
+      const Color(0xFF1A1A2E),
+      const Color(0xFF16213E),
+    ],
+    // Bronze theme
+    [
+      Colors.black, 
+      const Color(0xFF231F20),
+      const Color(0xFF2D2424),
+    ],
+    // Green theme
+    [
+      Colors.black,
+      const Color(0xFF1A2F2F),
+      const Color(0xFF1F3B3B),
+    ],
+  ];
+  
+  @override
+  Widget build(BuildContext context) {
+    final currentGradient = _themeGradients[_currentIndex % _themeGradients.length];
+    final screenSize = MediaQuery.of(context).size;
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: currentGradient,
+          stops: const [0.0, 0.6, 1.0],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 20), // Space at top
+            // Container with perfect height
+            Container(
+              height: 550, // Increased to 550px for perfect height
+              child: PageView.builder(
+                itemCount: widget.moments.length,
+                controller: PageController(viewportFraction: 0.9),
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentIndex = index;
+                  });
+                },
+                itemBuilder: (context, index) {
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                    // Remove red border and use a less noticeable corner radius
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(25.0),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22.0),
+                      child: _SimpleMomentCard(
+                        moment: widget.moments[index],
+                        imageIndex: index,
+                        currentUserId: widget.userId,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 20), // Space at bottom
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- Simplified Moment Card with no blur effects ---
+class _SimpleMomentCard extends StatelessWidget {
   final Project moment;
   final int imageIndex;
   final String? currentUserId;
 
-  const _MomentCarouselCard({
+  const _SimpleMomentCard({
     required this.moment,
     required this.imageIndex,
     required this.currentUserId,
@@ -317,18 +503,12 @@ class _MomentCarouselCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final String imagePath = 'assets/images/${(imageIndex % 3) + 1}.png';
     final bool isHosting = currentUserId != null && currentUserId == moment.organizerId;
     final dbService = Provider.of<DatabaseService>(context, listen: false);
 
-    return Card(
-      elevation: 1.0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(35.0),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
         onTap: () {
           Navigator.push(
@@ -347,40 +527,34 @@ class _MomentCarouselCard extends StatelessWidget {
                 Container(color: Colors.grey.shade800, child: const Center(child: Icon(Icons.broken_image))),
             ),
             
-            // Layer 2: Gradient Overlay at bottom (for text visibility)
+            // Ultra-simple implementation matching reference exactly
             Positioned(
               bottom: 0,
-              left: 0,
-              right: 0,
-              height: 70,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+              left: 8,
+              right: 8,
+              height: 145, // Exact height 
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(25),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
+                  child: Container(
+                    color: Color.fromRGBO(200, 180, 210, 0.18),
+                    child: Center(
+                      child: Text(
+                        moment.title,
+                        style: GoogleFonts.openSans(
+                          color: Colors.white,
+                          fontSize: 42,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
             
-            // Layer 3: Text Content (title/name at bottom center)
-            Positioned(
-              bottom: 20,
-              left: 0,
-              right: 0,
-              child: Text(
-                moment.title,
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 38,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            
-            // Layer 4: Hosting Badge (pill-shaped)
+            // Layer 5: Hosting Badge (pill-shaped)
             if (isHosting)
               Positioned(
                 top: 12.0,
@@ -391,18 +565,18 @@ class _MomentCarouselCard extends StatelessWidget {
                     color: Colors.black.withOpacity(0.4),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Hosting',
-                    style: TextStyle(
+                    style: GoogleFonts.nunito(
                       color: Colors.white,
                       fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
               ),
               
-            // Layer 5: Delete button (only visible for organizer)
+            // Layer 6: Delete button (only visible for organizer)
             if (isHosting)
               Positioned(
                 top: 12.0,
@@ -443,18 +617,30 @@ class _MomentCarouselCard extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text(
+          title: Text(
             'Delete Moment', 
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: GoogleFonts.nunito(
+              color: Colors.white, 
+              fontWeight: FontWeight.w700,
+            ),
           ),
           content: Text(
             'Are you sure you want to delete "${moment.title}"? This action cannot be undone.',
-            style: const TextStyle(color: Colors.white70),
+            style: GoogleFonts.nunito(
+              color: Colors.white70,
+              fontWeight: FontWeight.w500,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              child: Text(
+                'Cancel', 
+                style: GoogleFonts.nunito(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             TextButton(
               onPressed: () async {
@@ -489,9 +675,12 @@ class _MomentCarouselCard extends StatelessWidget {
                   );
                 }
               },
-              child: const Text(
+              child: Text(
                 'Delete',
-                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                style: GoogleFonts.nunito(
+                  color: Colors.red, 
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
