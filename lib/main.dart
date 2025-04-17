@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
 import 'package:provider/provider.dart'; // Import Provider
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+import 'package:firebase_app_check/firebase_app_check.dart'; // Import App Check
+import 'package:flutter/foundation.dart'; // Import kDebugMode
 
 import 'firebase_options.dart'; // Import generated options
 import 'src/services/auth_service.dart'; // Import AuthService
 import 'src/services/database_service.dart'; // Import DatabaseService
+import 'src/services/storage_service.dart'; // Import StorageService
 // Import the wrapper
 import 'src/features/authentication/presentation/auth_wrapper.dart';
 // TODO: Import home screen (e.g., HomeScreen) if needed directly by main routes later
@@ -14,6 +17,20 @@ Future<void> main() async { // Make main async
   WidgetsFlutterBinding.ensureInitialized(); // Ensure bindings are initialized
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform, // Use generated options
+  );
+  // Activate App Check
+  await FirebaseAppCheck.instance.activate(
+    // Conditionally set providers based on kDebugMode
+    androidProvider: kDebugMode 
+        ? AndroidProvider.debug 
+        : AndroidProvider.playIntegrity,
+    appleProvider: kDebugMode 
+        ? AppleProvider.debug 
+        : AppleProvider.appAttest,
+    // TODO: Configure web provider if needed (replace placeholder)
+    // webProvider: kDebugMode 
+    //   ? ReCaptchaV3Provider('recaptcha-v3-site-key') 
+    //   : ReCaptchaEnterpriseProvider('your-recaptcha-enterprise-site-key'), 
   );
   // Removed TODO comment
   runApp(const MyApp());
@@ -40,6 +57,10 @@ class MyApp extends StatelessWidget {
         // Database Provider
         Provider<DatabaseService>(
            create: (_) => DatabaseService(),
+        ),
+        // Provide StorageService
+        Provider<StorageService>(
+          create: (_) => StorageService(),
         ),
         // TODO: Add other providers (e.g., DatabaseService)
       ],
