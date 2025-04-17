@@ -8,6 +8,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart'; // Import palette_generator
 import 'package:flutter/services.dart' show rootBundle; // Import for rootBundle
+import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:math' as math;
+import 'package:flutter/animation.dart';
 
 import '../../../services/auth_service.dart';
 import '../../../services/database_service.dart';
@@ -43,93 +46,387 @@ extension NunitoText on TextTheme {
   );
 }
 
-class HomeScreen extends StatelessWidget {
+// HomeScreen is now StatefulWidget
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+// Helper function to parse hex color string (e.g., #AARRGGBB)
+Color? _hexToColor(String? hexString) {
+  if (hexString == null || hexString.length < 7 || !hexString.startsWith('#')) {
+    return null;
+  }
+  final buffer = StringBuffer();
+  if (hexString.length == 7) buffer.write('ff'); // Add alpha if missing (e.g., #RRGGBB)
+  buffer.write(hexString.substring(1)); 
+  final int? colorValue = int.tryParse(buffer.toString(), radix: 16);
+  return colorValue == null ? null : Color(colorValue);
+}
+
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+  final Map<String, List<Color>> _gradientCache = {};
+  late final ValueNotifier<List<Color>> _backgroundGradientNotifier;
+  List<Project> _moments = []; 
+  Timer? _debounceTimer;
+  late AnimationController _animationController;
+
+  @override
+  void initState() {
+    super.initState();
+    print('[_HomeScreenState] initState');
+    _backgroundGradientNotifier = ValueNotifier<List<Color>>([
+      Colors.black,
+      const Color(0xFF231F20),
+      const Color(0xFF2D2424),
+    ]);
+    
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 12),
+    )..repeat(reverse: true);
+  }
+  
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _backgroundGradientNotifier.dispose();
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  // Generate gradient: Use stored hex OR fallback to dynamic generation
+  Future<List<Color>> _generateGradient(Project project, int pageIndex) async {
+    print('[_generateGradient] Generating gradient for project: ${project.id}, pageIndex: $pageIndex');
+
+    // Try using pre-computed hex colors first
+    final Color? color1 = _hexToColor(project.gradientColorHex1);
+    final Color? color2 = _hexToColor(project.gradientColorHex2);
+    final Color? color3 = _hexToColor(project.gradientColorHex3);
+
+    if (color1 != null && color2 != null && color3 != null) {
+      print('[_generateGradient] Using pre-computed hex colors.');
+      return [color1, color2, color3];
+    }
+
+    // --- Fallback to dynamic generation if hex colors are missing --- 
+    print('[_generateGradient] Pre-computed colors missing. Falling back to dynamic generation.');
+    ImageProvider imageProvider;
+    String imageSourceInfo;
+
+    if (project.coverImageUrl != null && project.coverImageUrl!.isNotEmpty) {
+      imageSourceInfo = 'Network: ${project.coverImageUrl}';
+      imageProvider = CachedNetworkImageProvider(project.coverImageUrl!); 
+    } else {
+      // Use pageIndex for asset fallback
+      final assetIndex = pageIndex % 3; // Assuming 3 default assets
+      final fallbackAssetPath = 'assets/images/${assetIndex + 1}.png';
+      imageSourceInfo = 'Asset fallback: $fallbackAssetPath'; 
+      imageProvider = AssetImage(fallbackAssetPath);
+    }
+
+    print('[PaletteGenerator] Using image source for fallback: $imageSourceInfo');
+    try {
+      final PaletteGenerator palette = await PaletteGenerator.fromImageProvider(
+        imageProvider, 
+        maximumColorCount: 16, 
+      );
+      // ... (Same color selection logic as before) ...
+       Color topColorFb = palette.darkVibrantColor?.color ?? palette.darkMutedColor?.color ?? Colors.black;
+       Color middleColorFb = palette.vibrantColor?.color ?? palette.lightVibrantColor?.color ?? palette.dominantColor?.color ?? const Color(0xFF333333);
+       Color bottomColorFb = palette.darkMutedColor?.color ?? palette.dominantColor?.color.withAlpha(200) ?? const Color(0xFF1A1A1A);
+       if (topColorFb == middleColorFb) { middleColorFb = palette.lightMutedColor?.color ?? palette.dominantColor?.color ?? middleColorFb; }
+       if (topColorFb == bottomColorFb || middleColorFb == bottomColorFb) { bottomColorFb = topColorFb == Colors.black ? const Color(0xFF111111) : Colors.black; }
+       if (topColorFb == middleColorFb && middleColorFb == bottomColorFb) { middleColorFb = middleColorFb.withAlpha(200); bottomColorFb = middleColorFb.withAlpha(150); }
+
+      final resultGradient = [topColorFb, middleColorFb, bottomColorFb];
+      print('[PaletteGenerator] Fallback result gradient: $resultGradient');
+      return resultGradient;
+
+    } catch (e, stackTrace) {
+      print('[PaletteGenerator] ERROR during fallback generation for ${project.id} using $imageSourceInfo:\n$e\n$stackTrace');
+      return [ 
+        Colors.black,
+        const Color(0xFF231F20),
+        const Color(0xFF2D2424),
+      ];
+    }
+  }
+
+  // Update function uses the new _generateGradient method
+  Future<void> _updateBackgroundForPage(int pageIndex) async { 
+    if (!mounted) return; 
+    print('[_HomeScreenState] _updateBackgroundForPage called for pageIndex: $pageIndex');
+
+    if (_moments.isEmpty || pageIndex < 0 || pageIndex >= _moments.length) {
+        _backgroundGradientNotifier.value = [ Colors.black, const Color(0xFF231F20), const Color(0xFF2D2424) ];
+        return;
+    }
+    final Project project = _moments[pageIndex];
+    
+    // Cache key logic remains the same (project ID or asset index string)
+    final cacheKey = project.coverImageUrl?.isNotEmpty ?? false ? project.id : (pageIndex % 3).toString();
+    print('[_HomeScreenState] Corresponding project ID: ${project.id}, Cache Key: $cacheKey');
+
+    if (_gradientCache.containsKey(cacheKey)) {
+       final cachedGradient = _gradientCache[cacheKey]!;
+       if (!listEquals(_backgroundGradientNotifier.value, cachedGradient)) { 
+         _backgroundGradientNotifier.value = cachedGradient;
+         print('[_HomeScreenState] Notifier updated from cache.');
+       }
+       return;
+    }
+
+    print('[_HomeScreenState] Cache MISS for key: $cacheKey. Generating gradient...');
+    try {
+      // Call the unified generation function, passing project and index
+      final List<Color> newGradient = await _generateGradient(project, pageIndex);
+      print('[_HomeScreenState] Generation finished. Received gradient: $newGradient');
+
+      _gradientCache[cacheKey] = newGradient;
+      print('[_HomeScreenState] Stored gradient in cache for key: $cacheKey');
+
+      // Update notifier if still mounted and gradient is different
+      if (mounted && !listEquals(_backgroundGradientNotifier.value, newGradient)) { 
+         _backgroundGradientNotifier.value = newGradient;
+         print('[_HomeScreenState] Notifier updated after generation.');
+      } 
+    } catch (e, stackTrace) { // Catch errors during generation
+        print("[_HomeScreenState] ERROR during gradient generation/update: $e\n$stackTrace");
+        if (mounted) {
+          _backgroundGradientNotifier.value = [ Colors.black, Colors.red.shade900, Colors.black]; 
+        }
+    }
+  }
+
+  // Simplified: only manages debounce timer
+  void _handlePageChanged(int index) {
+    if (!mounted) return;
+    print('[_HomeScreenState] _handlePageChanged - Raw index: $index');
+        
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      print('[_HomeScreenState] Debounce timer fired for index: $index');
+      // Pass the latest index from the event to the update function
+      _updateBackgroundForPage(index); 
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Dependencies needed by FutureBuilder and StreamBuilder
     final userId = context.select<User?, String?>((user) => user?.uid);
     final dbService = context.watch<DatabaseService>();
     final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // --- Custom Header Row ---
-            const SizedBox(height: 8.0),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Title with Nunito font
-                  Text(
-                    'Moments',
-                    style: theme.textTheme.appTitle,
-                  ),
-                  const Spacer(),
-                  // Add Button
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-                    iconSize: 28.0,
-                    tooltip: 'Create Moment',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const CreateMomentScreen()),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  // Profile Button
-                  IconButton(
-                    icon: const Icon(Icons.account_circle, color: Colors.white),
-                    iconSize: 28.0,
-                    tooltip: 'Settings',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            // --- Main Content Area (Empty or Carousel) ---
-            Expanded(
-              child: userId == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : StreamBuilder<List<Project>>(
-                      stream: dbService.getMomentsForUser(userId),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-                        if (snapshot.hasError) {
-                          return Center(child: Text('Error loading moments.', style: theme.textTheme.bodySmall));
-                        }
-                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          return _buildEmptyState(context);
-                        }
-
-                        final moments = snapshot.data!;
+      body: Stack(
+        children: [
+          // Layer 1: Background Container listening to ValueNotifier
+          Positioned.fill( 
+            child: ValueListenableBuilder<List<Color>>(
+              valueListenable: _backgroundGradientNotifier,
+              builder: (context, gradientColors, child) {
+                print('[_HomeScreenState] ValueListenableBuilder rebuilding background container.');
+                return AnimatedBuilder(
+                  animation: _animationController,
+                  builder: (context, child) {
+                    return Stack(
+                      children: [
+                        // Base gradient layer
+                        Container( 
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                gradientColors[0],
+                                gradientColors.length > 1 ? gradientColors[1] : gradientColors[0],
+                                gradientColors.length > 2 ? gradientColors[2] : (gradientColors.length > 1 ? gradientColors[1] : gradientColors[0]),
+                              ],
+                              stops: const [0.0, 0.6, 1.0],
+                            ),
+                          ),
+                        ),
                         
-                        // Use our new stateful content widget
-                        return MomentsPageView(
-                          moments: moments, 
-                          userId: userId,
-                        );
-                      },
-                    ),
+                        // Diagonal stripes for texture
+                        Opacity(
+                          opacity: 0.12,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              backgroundBlendMode: BlendMode.overlay,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.white.withOpacity(0.1),
+                                  Colors.transparent,
+                                  Colors.white.withOpacity(0.1),
+                                  Colors.transparent,
+                                ],
+                                stops: const [0.0, 0.2, 0.5, 0.8, 1.0],
+                                tileMode: TileMode.repeated,
+                              ),
+                            ),
+                          ),
+                        ),
+                        
+                        // Glass blur blobs overlay - now animated
+                        CustomPaint(
+                          painter: GlassEffectPainter(
+                            color1: gradientColors[0].withOpacity(0.5),
+                            color2: gradientColors.length > 1 ? gradientColors[1].withOpacity(0.5) : gradientColors[0].withOpacity(0.3),
+                            color3: gradientColors.length > 2 ? gradientColors[2].withOpacity(0.5) : (gradientColors.length > 1 ? gradientColors[1] : gradientColors[0]).withOpacity(0.3),
+                            animationValue: _animationController.value,
+                          ),
+                          child: Container(),
+                        ),
+                        
+                        // Light source effect at top
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: const Alignment(0.0, -0.5),
+                              radius: 0.8,
+                              colors: [
+                                Colors.white.withOpacity(0.3),
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 1.0],
+                            ),
+                          ),
+                        ),
+                        
+                        // Vignette effect
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: Alignment.center,
+                              radius: 1.5,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.15),
+                              ],
+                              stops: const [0.6, 1.0],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          // Layer 2: Main Content (SafeArea + Column)
+          SafeArea( 
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // --- Custom Header Row --- 
+                const SizedBox(height: 8.0),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Title with Nunito font
+                      Text(
+                        'Moments',
+                        style: theme.textTheme.appTitle,
+                      ),
+                      const Spacer(),
+                      // Add Button
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline, color: Colors.white),
+                        iconSize: 28.0,
+                        tooltip: 'Create Moment',
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const CreateMomentScreen()),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      // Profile Button
+                      IconButton(
+                        icon: const Icon(Icons.account_circle, color: Colors.white),
+                        iconSize: 28.0,
+                        tooltip: 'Settings',
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                // --- Main Content Area uses StreamBuilder for updates ---
+                Expanded(
+                  child: userId == null
+                      ? const Center(child: CircularProgressIndicator())
+                      : StreamBuilder<List<Project>>(
+                          stream: dbService.getMomentsForUser(userId),
+                          builder: (context, snapshot) {
+                             // Updated post-frame callback logic
+                             WidgetsBinding.instance.addPostFrameCallback((_) {
+                               if (mounted) {
+                                 final newMoments = snapshot.data ?? [];
+                                 bool listJustLoadedOrChanged = _moments.isEmpty && newMoments.isNotEmpty || 
+                                                              !listEquals(_moments.map((p) => p.id).toList(), newMoments.map((p) => p.id).toList());
+                                  
+                                 if (listJustLoadedOrChanged) {
+                                    print('[_HomeScreenState] PostFrame: Data changed/loaded. Updating _moments state & triggering initial background update.');
+                                    _moments = newMoments; 
+                                    if (_moments.isNotEmpty) {
+                                       // Call async but don't wait - let UI build
+                                       _updateBackgroundForPage(0).ignore(); 
+                                    } else {
+                                       _updateBackgroundForPage(-1).ignore(); 
+                                    }
+                                 }
+                               }
+                             });
+                             
+                            // Process stream data for potential background updates later
+                            final List<Project> currentStreamMoments = snapshot.data ?? [];
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                  bool listContentChanged = !listEquals(_moments.map((p) => p.id).toList(), currentStreamMoments.map((p) => p.id).toList());
+                                  if (listContentChanged) {
+                                      print("[_HomeScreenState] PostFrame: Stream updated list content.");
+                                      _moments = currentStreamMoments;
+                                      // Optional: Trigger background update maybe?
+                                      // Already handled by onPageChanged debouncer mostly.
+                                  }
+                              }
+                            });
+
+                            // Build UI based on stream data
+                            if (currentStreamMoments.isEmpty) {
+                              return _buildEmptyState(context);
+                            } else {
+                              return MomentsPageView(
+                                  moments: currentStreamMoments, // Use latest stream data
+                                  userId: userId,
+                                  onPageChanged: _handlePageChanged, 
+                              );
+                            }
+                          },
+                        ),
+                ),
+              ],
+             ),
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   // Helper widget for the updated empty state
@@ -196,177 +493,37 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-// New StatefulWidget for the PageView and background
-class MomentsPageView extends StatefulWidget {
+// MomentsPageView is now StatelessWidget
+class MomentsPageView extends StatelessWidget {
   final List<Project> moments;
   final String? userId;
+  final ValueChanged<int> onPageChanged; // Callback function
   
   const MomentsPageView({
     super.key,
     required this.moments,
     required this.userId,
+    required this.onPageChanged, // Accept callback
   });
   
   @override
-  State<MomentsPageView> createState() => _MomentsPageViewState();
-}
-
-class _MomentsPageViewState extends State<MomentsPageView> {
-  int _currentIndex = 0;
-  final Map<int, List<Color>> _gradientCache = {};
-  List<Color> _currentGradient = [ 
-    Colors.black,
-    const Color(0xFF231F20),
-    const Color(0xFF2D2424),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    print('[MomentsPageView] initState - Initializing background.');
-    if (widget.moments.isNotEmpty) {
-      _updateBackgroundForPage(0);
-    } else {
-      print('[MomentsPageView] initState - No moments, using default background.');
-    }
-  }
-
-  // New instance method for palette generation on main isolate
-  Future<List<Color>> _generateGradientFromImagePath(String imagePath) async {
-    print('[PaletteGenerator] Starting extraction for: $imagePath (on main isolate)');
-    try {
-      final PaletteGenerator palette = await PaletteGenerator.fromImageProvider(
-        AssetImage(imagePath), // Use directly
-        // size: const Size(200, 200), // No size needed here either
-        maximumColorCount: 16, 
-      );
-      print('[PaletteGenerator] Palette generated for $imagePath. Dominant: ${palette.dominantColor?.color}, Vibrant: ${palette.vibrantColor?.color}, Muted: ${palette.mutedColor?.color}');
-
-      // Extract colors - prioritize vibrant, then dominant, then muted
-      Color color1 = Colors.black; 
-      Color color2 = palette.dominantColor?.color ?? const Color(0xFF2D2424); 
-      Color color3 = palette.darkMutedColor?.color ?? palette.darkVibrantColor?.color ?? const Color(0xFF1A1A1A);
-
-      if (palette.darkVibrantColor != null) {
-        color1 = palette.darkVibrantColor!.color;
-        color3 = Colors.black;
-      } else if (palette.darkMutedColor != null) {
-        color1 = palette.darkMutedColor!.color;
-        color3 = Colors.black;
-      }
-
-      if (palette.vibrantColor != null) {
-        color2 = palette.vibrantColor!.color;
-      } else if (palette.lightVibrantColor != null) {
-        color2 = palette.lightVibrantColor!.color;
-      } else if (palette.mutedColor != null) {
-        color2 = palette.mutedColor!.color;
-      }
-
-      if (color1 == color2) color2 = palette.lightMutedColor?.color ?? color2;
-      if (color2 == color3) color3 = palette.dominantColor?.color.withOpacity(0.7) ?? color3;
-
-      final resultGradient = [color1, color2, color3];
-      print('[PaletteGenerator] Result gradient for $imagePath: $resultGradient');
-      return resultGradient;
-
-    } catch (e) {
-      print('[PaletteGenerator] ERROR generating palette for $imagePath: $e');
-      return [ // Fallback gradient
-        Colors.black,
-        const Color(0xFF231F20),
-        const Color(0xFF2D2424),
-      ];
-    }
-  }
-
-  Future<void> _updateBackgroundForPage(int index) async {
-    if (!mounted) return; 
-    print('[MomentsPageView] _updateBackgroundForPage called for index: $index');
-
-    final imageIndex = index % 3; 
-    final imagePath = 'assets/images/${imageIndex + 1}.png';
-    print('[MomentsPageView] Corresponding image path: $imagePath (imageIndex: $imageIndex)');
-
-    if (_gradientCache.containsKey(imageIndex)) {
-      print('[MomentsPageView] Cache HIT for imageIndex: $imageIndex. Using cached gradient.');
-      if (mounted) {
-        setState(() {
-          _currentGradient = _gradientCache[imageIndex]!;
-           print('[MomentsPageView] setState (from cache) for index $index. New gradient: $_currentGradient');
-        });
-      }
-      return;
-    }
-
-    print('[MomentsPageView] Cache MISS for imageIndex: $imageIndex. Starting generation on main isolate...');
-    try {
-      // Call the new instance method directly - NO COMPUTE
-      final List<Color> newGradient = await _generateGradientFromImagePath(imagePath);
-      print('[MomentsPageView] Generation finished for index $index. Received gradient: $newGradient');
-
-      _gradientCache[imageIndex] = newGradient;
-      print('[MomentsPageView] Stored gradient in cache for imageIndex: $imageIndex');
-
-      if (mounted && index == _currentIndex) {
-        print('[MomentsPageView] Index $index matches current index $_currentIndex. Updating state...');
-        setState(() {
-          _currentGradient = newGradient;
-           print('[MomentsPageView] setState (after generation) for index $index. New gradient: $_currentGradient');
-        });
-      } else {
-         print('[MomentsPageView] Index $index DOES NOT match current index $_currentIndex. State not updated immediately.');
-      }
-    } catch (e) {
-        print("[MomentsPageView] ERROR during palette generation: $e");
-        if (mounted && index == _currentIndex) {
-          setState(() {
-            _currentGradient = [ Colors.black, Colors.red.shade900, Colors.black]; // Error gradient
-          });
-        }
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // Use the _currentGradient state variable
-    print('[MomentsPageView] build method. Current index: $_currentIndex, Current gradient: $_currentGradient');
-    final screenSize = MediaQuery.of(context).size;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 800), // Slightly longer duration for smoother feel
-      curve: Curves.easeInOut, // Add easing curve
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: _currentGradient, // Use state variable
-          stops: const [0.0, 0.6, 1.0], // Keep stops for now
-        ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(height: 20), // Space at top
-            Container(
-              height: 550,
-              child: PageView.builder(
-                itemCount: widget.moments.length,
-                controller: PageController(viewportFraction: 0.9),
-                onPageChanged: (index) {
-                  if (!mounted) return;
-                  print('[MomentsPageView] onPageChanged - New index: $index');
-                  setState(() {
-                    _currentIndex = index; // Update index immediately for responsiveness
-                  });
-                  // Trigger background update for the new page
-                  _updateBackgroundForPage(index);
-                },
-                itemBuilder: (context, index) {
-                  // Pass the correct imageIndex based on page index
-                  final imageIndexForCard = index % 3;
-                  return Container(
+     print('[MomentsPageView] build method');
+    // No AnimatedContainer here anymore
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(height: 20),
+          Container(
+            height: 550,
+            child: PageView.builder(
+              itemCount: moments.length,
+              controller: PageController(viewportFraction: 0.9),
+              onPageChanged: onPageChanged, // Use the passed callback
+              itemBuilder: (context, index) {
+                final imageIndexForCard = index % 3; // Still assuming cyclic assets
+                return Container(
                     margin: const EdgeInsets.symmetric(horizontal: 16.0),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(25.0),
@@ -381,19 +538,17 @@ class _MomentsPageViewState extends State<MomentsPageView> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(22.0),
                       child: _SimpleMomentCard(
-                        moment: widget.moments[index],
-                        // Pass the calculated imageIndex for the card's image path
+                        moment: moments[index],
                         imageIndex: imageIndexForCard,
-                        currentUserId: widget.userId,
+                        currentUserId: userId,
                       ),
                     ),
                   );
-                },
-              ),
+              },
             ),
-            const SizedBox(height: 20), // Space at bottom
-          ],
-        ),
+          ),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
@@ -413,7 +568,18 @@ class _SimpleMomentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String imagePath = 'assets/images/${(imageIndex % 3) + 1}.png';
+    // Determine the correct image provider based on coverImageUrl
+    final ImageProvider imageProvider;
+    if (moment.coverImageUrl != null && moment.coverImageUrl!.isNotEmpty) {
+      print('[_SimpleMomentCard] Using Network Image: ${moment.coverImageUrl}');
+      imageProvider = CachedNetworkImageProvider(moment.coverImageUrl!); 
+    } else {
+      // Fallback to asset image using imageIndex
+      final String imagePath = 'assets/images/${(imageIndex % 3) + 1}.png';
+      print('[_SimpleMomentCard] Using Asset Image: $imagePath');
+      imageProvider = AssetImage(imagePath);
+    }
+    
     final bool isHosting = currentUserId != null && currentUserId == moment.organizerId;
     final dbService = Provider.of<DatabaseService>(context, listen: false);
 
@@ -421,23 +587,41 @@ class _SimpleMomentCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => MomentDetailScreen(moment: moment)),
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true, // Allows modal to take full height
+            backgroundColor: Colors.transparent, // Make background transparent
+            builder: (context) => MomentDetailScreen(moment: moment), // Pass the moment data
           );
         },
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Layer 1: Background Image
-            Image.asset(
-              imagePath,
+            // Layer 1: Background Image - Use the determined imageProvider
+            Image( // Use generic Image widget
+              image: imageProvider,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) =>
-                Container(color: Colors.grey.shade800, child: const Center(child: Icon(Icons.broken_image))),
+              // Add error builder for network images too
+              errorBuilder: (context, error, stackTrace) {
+                  print("Error loading image: $error"); // Log error
+                  return Container(
+                      color: Colors.grey.shade800, 
+                      child: const Center(child: Icon(Icons.broken_image, color: Colors.grey))
+                  );
+              },
+              // Optional: Add frameBuilder for loading indication if needed
+              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                 if (wasSynchronouslyLoaded) return child;
+                 return AnimatedOpacity(
+                    opacity: frame == null ? 0 : 1,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                    child: child,
+                 );
+              },
             ),
             
-            // New implementation for the bottom gradient blur effect
+            // Layer: Faded bottom overlay (Simulated blur)
             Positioned(
               bottom: 0,
               left: 0, // Extend to screen edges
@@ -613,5 +797,75 @@ class _SimpleMomentCard extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+// Add this custom painter class at the bottom of the file, outside any other classes
+class GlassEffectPainter extends CustomPainter {
+  final Color color1;
+  final Color color2;
+  final Color color3;
+  final double animationValue;
+  
+  GlassEffectPainter({
+    required this.color1,
+    required this.color2,
+    required this.color3,
+    required this.animationValue,
+  });
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final width = size.width;
+    final height = size.height;
+    
+    // Use animationValue to modulate properties more noticeably
+    final double timeFactor = math.sin(animationValue * math.pi); // Value cycles between 0 and 1 and back
+    
+    // Animate blobs with more size variation
+    _drawGlassBlob(canvas, Offset(width * 0.2, height * 0.2), width * (0.5 + 0.1 * timeFactor), color1, timeFactor);
+    _drawGlassBlob(canvas, Offset(width * 0.8, height * 0.3), width * (0.4 + 0.08 * timeFactor), color2, timeFactor);
+    _drawGlassBlob(canvas, Offset(width * 0.5, height * 0.7), width * (0.6 + 0.12 * timeFactor), color3, timeFactor);
+    _drawGlassBlob(canvas, Offset(width * 0.1, height * 0.8), width * (0.35 + 0.07 * timeFactor), color2, timeFactor);
+    
+    // Animate smaller highlight bubbles more noticeably
+    _drawGlassBlob(canvas, Offset(width * 0.7, height * 0.15), width * (0.2 + 0.05 * timeFactor), Colors.white.withOpacity(0.15), timeFactor);
+    _drawGlassBlob(canvas, Offset(width * 0.3, height * 0.6), width * (0.15 + 0.04 * timeFactor), Colors.white.withOpacity(0.1), timeFactor);
+  }
+  
+  void _drawGlassBlob(Canvas canvas, Offset center, double size, Color color, double timeFactor) {
+    // Animate opacity more noticeably (range 0.1 to 0.4)
+    final double animatedOpacity = 0.15 + 0.25 * timeFactor; 
+    
+    // Outer glow
+    final outerPaint = Paint()
+      ..color = color.withOpacity(0.1 + animatedOpacity * 0.5) // Modulate opacity more
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 50);
+    canvas.drawCircle(center, size, outerPaint);
+    
+    // Main blob
+    final mainPaint = Paint()
+      ..color = color.withOpacity(0.15 + animatedOpacity * 0.6) // Modulate opacity more
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30);
+    canvas.drawCircle(center, size * 0.8, mainPaint);
+    
+    // Inner highlight - make it shift more
+    final innerPaint = Paint()
+      ..color = Colors.white.withOpacity(0.1 + animatedOpacity * 0.3)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 15);
+    canvas.drawCircle(
+      Offset(center.dx - size * (0.2 + 0.1 * timeFactor), center.dy - size * (0.2 + 0.1 * timeFactor)), 
+      size * 0.35, // Slightly larger highlight 
+      innerPaint
+    );
+  }
+  
+  @override
+  bool shouldRepaint(GlassEffectPainter oldDelegate) {
+    // Repaint if colors or animation value change
+    return color1 != oldDelegate.color1 || 
+           color2 != oldDelegate.color2 || 
+           color3 != oldDelegate.color3 ||
+           animationValue != oldDelegate.animationValue;
   }
 }

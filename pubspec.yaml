@@ -35,9 +35,17 @@ dependencies:
   firebase_core: ^2.11.0
   firebase_auth: ^4.5.0
   cloud_firestore: ^4.6.0
+  firebase_storage: ^11.1.0
 
   # State Management
   provider: ^6.0.5
+
+  # Firebase App Check
+  firebase_app_check: ^0.2.1+14 # Added App Check
+
+  # Image Handling
+  image_picker: ^1.0.8
+  cached_network_image: ^3.3.1
 
   # Social Sign In
   google_sign_in: ^6.0.0 # Check pub.dev for latest version
@@ -63,6 +71,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  # firebase_app_check_debug: 0.2.1+16 # Temporarily remove
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

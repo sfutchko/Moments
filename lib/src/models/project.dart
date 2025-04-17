@@ -34,6 +34,11 @@ class Project {
   final String? finalVideoUrl; // URL of the compiled video
   final String? themeId; // ID of the selected theme/template
   final String? soundAccentId; // ID of the selected sound accent
+  final String? coverImageUrl; // Added field for cover image URL
+  final String? gradientColorHex1;
+  final String? gradientColorHex2;
+  final String? gradientColorHex3;
+  final String? occasion; // Add the new occasion field
 
   Project({
     required this.id,
@@ -47,6 +52,11 @@ class Project {
     this.finalVideoUrl,
     this.themeId,
     this.soundAccentId,
+    this.coverImageUrl,
+    this.gradientColorHex1,
+    this.gradientColorHex2,
+    this.gradientColorHex3,
+    this.occasion, // Add to constructor
   }) : contributorIds = contributorIds ?? [],
        clips = clips ?? [];
 
@@ -74,9 +84,33 @@ class Project {
       finalVideoUrl: data['finalVideoUrl'] as String?,
       themeId: data['themeId'] as String?,
       soundAccentId: data['soundAccentId'] as String?,
+      coverImageUrl: data['coverImageUrl'] as String?,
+      gradientColorHex1: data['gradientColorHex1'] as String?,
+      gradientColorHex2: data['gradientColorHex2'] as String?,
+      gradientColorHex3: data['gradientColorHex3'] as String?,
+      occasion: data['occasion'] as String?, // Add occasion to factory
     );
   }
 
   // TODO: Add method to convert to Firestore Map (toMap)
-  // Map<String, dynamic> toMap() { ... }
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'organizerId': organizerId,
+      'organizerName': organizerName,
+      'createdAt': createdAt,
+      'deliveryDate': deliveryDate,
+      'contributorIds': contributorIds,
+      // Clips might need special handling if they are complex objects
+      // 'clips': clips.map((clip) => clip.toMap()).toList(), // Example if VideoClip has toMap
+      'finalVideoUrl': finalVideoUrl,
+      'themeId': themeId,
+      'soundAccentId': soundAccentId,
+      'coverImageUrl': coverImageUrl,
+      'gradientColorHex1': gradientColorHex1,
+      'gradientColorHex2': gradientColorHex2,
+      'gradientColorHex3': gradientColorHex3,
+      'occasion': occasion, // Add occasion to map
+    };
+  }
 } 
