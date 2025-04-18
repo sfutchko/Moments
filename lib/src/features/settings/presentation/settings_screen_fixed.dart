@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/auth_service.dart';
 import '../../../services/database_service.dart';
+import '../../../models/project.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -28,6 +29,8 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
   // Notification preferences
   bool _pushNotificationsEnabled = true;
   bool _emailNotificationsEnabled = true;
+  bool _contributionNotificationsEnabled = true;
+  bool _deliveryNotificationsEnabled = true;
   
   // Stats
   int _totalProjects = 0;
@@ -48,7 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     _loadUserData();
     _loadNotificationPreferences();
   }
-  
+
   @override
   void dispose() {
     _animationController.dispose();
@@ -61,6 +64,8 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       setState(() {
         _pushNotificationsEnabled = prefs.getBool('push_notifications_enabled') ?? true;
         _emailNotificationsEnabled = prefs.getBool('email_notifications_enabled') ?? true;
+        _contributionNotificationsEnabled = prefs.getBool('contribution_notifications_enabled') ?? true;
+        _deliveryNotificationsEnabled = prefs.getBool('delivery_notifications_enabled') ?? true;
       });
     } catch (e) {
       print('Error loading notification preferences: $e');
@@ -86,12 +91,12 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       }
       
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Settings updated')),
+        const SnackBar(content: Text('Notification settings updated')),
       );
     } catch (e) {
       print('Error saving notification preference: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error updating settings')),
+        const SnackBar(content: Text('Error updating notification settings')),
       );
     }
   }
@@ -168,10 +173,10 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
           style: GoogleFonts.nunito(color: Colors.white),
           decoration: InputDecoration(
             hintText: 'Enter your name',
-            hintStyle: const TextStyle(color: Colors.white60),
+            hintStyle: TextStyle(color: Colors.white60),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Colors.white30),
+              borderSide: BorderSide(color: Colors.white30),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -204,14 +209,14 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Name updated')),
+            const SnackBar(content: Text('Name updated successfully')),
           );
         }
       } catch (e) {
         setState(() => _isLoading = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
+            SnackBar(content: Text('Error updating name: $e')),
           );
         }
       }
@@ -228,14 +233,14 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Verification email sent')),
+          const SnackBar(content: Text('Verification email sent. Please check your inbox.')),
         );
       }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text('Error sending verification email: $e')),
         );
       }
     }
@@ -277,6 +282,8 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
+    final user = Provider.of<User?>(context);
+    
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.black,
@@ -376,7 +383,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       ),
       child: Column(
         children: [
-          // User avatar with initials
+          // User avatar (simplified with initials only)
           Container(
             width: 100,
             height: 100,
@@ -655,7 +662,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
           ),
           const SizedBox(height: 16),
           
-          // Notifications section
+          // Notifications section (simplified)
           _buildToggleSettingsItem(
             icon: Icons.notifications_active,
             label: 'Push Notifications',

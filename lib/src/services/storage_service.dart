@@ -166,4 +166,75 @@ class StorageService {
       return null;
     }
   }
+
+  // Delete all storage files related to a project
+  Future<bool> deleteAllProjectFiles(String momentId) async {
+    try {
+      print("Starting deletion of all storage files for project: $momentId");
+      
+      // Delete the entire moments/{momentId} directory recursively
+      final firebase_storage.Reference ref = _storage.ref().child('moments/$momentId');
+      
+      // List all items in this directory
+      firebase_storage.ListResult result = await ref.listAll();
+      
+      // Delete all items recursively
+      int deletedCount = 0;
+      
+      // Delete all files at the root level
+      for (var item in result.items) {
+        try {
+          await item.delete();
+          deletedCount++;
+          print("Deleted file: ${item.fullPath}");
+        } catch (e) {
+          print("Error deleting file ${item.fullPath}: $e");
+        }
+      }
+      
+      // For each subdirectory, list and delete all files
+      for (var prefix in result.prefixes) {
+        try {
+          firebase_storage.ListResult subItems = await prefix.listAll();
+          
+          // Delete files in the subdirectory
+          for (var item in subItems.items) {
+            try {
+              await item.delete();
+              deletedCount++;
+              print("Deleted file: ${item.fullPath}");
+            } catch (e) {
+              print("Error deleting file ${item.fullPath}: $e");
+            }
+          }
+          
+          // Handle nested directories if needed (recursive approach)
+          for (var nestedPrefix in subItems.prefixes) {
+            try {
+              firebase_storage.ListResult nestedItems = await nestedPrefix.listAll();
+              for (var item in nestedItems.items) {
+                try {
+                  await item.delete();
+                  deletedCount++;
+                  print("Deleted nested file: ${item.fullPath}");
+                } catch (e) {
+                  print("Error deleting nested file ${item.fullPath}: $e");
+                }
+              }
+            } catch (e) {
+              print("Error listing nested directory ${nestedPrefix.fullPath}: $e");
+            }
+          }
+        } catch (e) {
+          print("Error listing subdirectory ${prefix.fullPath}: $e");
+        }
+      }
+      
+      print("Successfully deleted $deletedCount files for project: $momentId");
+      return true;
+    } catch (e) {
+      print("Error deleting all project files: $e");
+      return false;
+    }
+  }
 } 

@@ -508,6 +508,68 @@ class InvitationService {
         });
   }
   
+  /// Send a reminder for an invitation
+  Future<void> sendReminder({
+    required String projectId,
+    required String invitationId,
+    required String recipientName,
+    required String recipientEmail,
+  }) async {
+    // Update the invitation record with reminder timestamp
+    await _db
+        .collection('projects')
+        .doc(projectId)
+        .collection('invitations')
+        .doc(invitationId)
+        .update({
+          'lastReminded': FieldValue.serverTimestamp(),
+          'timesReminded': FieldValue.increment(1),
+        });
+    
+    // Get project details to include in the reminder
+    final projectDoc = await _db.collection('projects').doc(projectId).get();
+    if (!projectDoc.exists) {
+      throw Exception('Project not found');
+    }
+
+    final projectData = projectDoc.data() as Map<String, dynamic>;
+    final projectTitle = projectData['title'] as String? ?? 'Special video';
+    
+    // Get the current user's name
+    final String senderName = _auth.currentUser?.displayName ?? 'Someone special';
+    
+    // Get the invite link
+    final project = Project(
+      id: projectId,
+      title: projectTitle,
+      occasion: projectData['occasion'] as String? ?? '',
+      createdAt: projectData['createdAt'] as Timestamp? ?? Timestamp.now(),
+      organizerId: projectData['organizerId'] as String? ?? '',
+      organizerName: projectData['organizerName'] as String? ?? 'Anonymous',
+      contributorIds: (projectData['contributorIds'] as List<dynamic>?)?.cast<String>() ?? [],
+      coverImageUrl: projectData['coverImageUrl'] as String?,
+      gradientColorHex1: projectData['gradientColorHex1'] as String?,
+      gradientColorHex2: projectData['gradientColorHex2'] as String?,
+      gradientColorHex3: projectData['gradientColorHex3'] as String?,
+      deliveryDate: projectData['deliveryDate'] as Timestamp?,
+      compiledVideoUrl: projectData['compiledVideoUrl'] as String?,
+    );
+    
+    final inviteLink = await generateInvitationLink(project);
+    
+    // Create a reminder message
+    final String message = 'Hi ${recipientName}!\n\n'
+        '${senderName} is reminding you to contribute to the "${projectTitle}" video. '
+        'Your video is important and still needed to complete this special project.\n\n'
+        'Tap this link to add your video: $inviteLink';
+        
+    // Share the reminder using the system dialog
+    await Share.share(
+      message,
+      subject: 'Reminder: Add your video to "${projectTitle}"',
+    );
+  }
+  
   /// Get a stream of invitations for a project
   Stream<QuerySnapshot> getInvitationsForProject(String projectId) {
     return _db

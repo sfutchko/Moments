@@ -10,6 +10,8 @@ import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:palette_generator/palette_generator.dart'; // Import Palette Generator
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // For Timestamp
+import 'package:rxdart/rxdart.dart'; // Import rxdart for combineLatest2
+import 'package:intl/intl.dart'; // Import intl for date formatting
 
 import '../../../models/project.dart'; // Import the Project model
 import '../../../services/database_service.dart'; // Import DatabaseService
@@ -20,6 +22,9 @@ import '../../recording/presentation/prompt_display_screen.dart'; // Import Prom
 import 'video_player_screen.dart'; // Import our new VideoPlayerScreen
 import '../../../services/invitation_service.dart'; // Import InvitationService
 import 'components/invite_list_component.dart';
+import '../../../services/delivery_service.dart';
+import '../widgets/delivery_countdown_timer.dart';
+import '../../../utils/image_provider_util.dart'; // Import our new utility class
 // TODO: Import other services if needed (e.g., DatabaseService for updates)
 
 // Convert to StatefulWidget
@@ -45,6 +50,7 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
   final double _initialImageScale = 1.0;
   final double _maxImageScale = 1.15; // How much the image zooms
   final VideoSharingService _sharingService = VideoSharingService();
+  final DeliveryService _deliveryService = DeliveryService();
 
   @override
   void initState() {
@@ -386,254 +392,215 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
         // --- Main Build Structure --- 
         return ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24.0)),
-          child: GestureDetector(
-            onVerticalDragUpdate: (details) {
-              if (details.primaryDelta != null && details.primaryDelta! > 0) {
-                // Swiping down - scale the image based on drag amount
-                final scaleFactor = 1.0 + (details.primaryDelta! / 500);
-                setState(() {
-                  _imageScale = (_imageScale * scaleFactor).clamp(1.0, 1.3);
-                });
-              }
-            },
-            onVerticalDragEnd: (details) {
-              // Reset scale when drag ends
-              setState(() {
-                _imageScale = 1.0;
-              });
-            },
-            child: Scaffold(
-              extendBodyBehindAppBar: true,
-              backgroundColor: Colors.black,
-              body: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Full-screen image layer
-                  Transform.scale(
-                    scale: _imageScale,
-                    child: Image(
+          child: Scaffold(
+            extendBodyBehindAppBar: true,
+            backgroundColor: Colors.black,
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Full-screen image layer with simpler implementation
+                Container(
+                  decoration: BoxDecoration(
+                    image: DecorationImage(
                       image: _getBackgroundImageProvider(),
                       fit: BoxFit.cover,
-                      height: double.infinity,
-                      width: double.infinity,
-                      errorBuilder: (context, error, stackTrace) {
-                        print("Error loading background image: $error");
-                        return Container(color: Colors.grey.shade900);
-                      },
                     ),
                   ),
-                  
-                  // Main Content with integrated frosted effect
-                  CustomScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    slivers: [
-                      // Clear top area - just a spacer
-                      SliverToBoxAdapter(
-                        child: SizedBox(height: screenHeight * 0.45),
-                      ),
-                      
-                      // Frosted content area
-                      SliverToBoxAdapter(
-                        child: ClipRect(
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.transparent,
-                                    _getGradientStartColor(displayMoment).withOpacity(0.1),
-                                    _getGradientEndColor(displayMoment).withOpacity(0.5),
-                                  ],
-                                  stops: const [0.0, 0.2, 1.0],
-                                ),
+                ),
+                
+                // Main Content with integrated frosted effect
+                CustomScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  slivers: [
+                    // Clear top area - just a spacer
+                    SliverToBoxAdapter(
+                      child: SizedBox(height: screenHeight * 0.45),
+                    ),
+                    
+                    // Frosted content area
+                    SliverToBoxAdapter(
+                      child: ClipRect(
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  _getGradientStartColor(displayMoment).withOpacity(0.1),
+                                  _getGradientEndColor(displayMoment).withOpacity(0.5),
+                                ],
+                                stops: const [0.0, 0.2, 1.0],
                               ),
-        child: Column(
-                                children: [
-                                  // Title section
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 20.0),
-                                    child: Text(
-                                      displayTitle,
-                                      textAlign: TextAlign.center,
-                                      style: GoogleFonts.nunito(
-                                        fontSize: 52,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
-                                        shadows: [const Shadow(blurRadius: 8.0, color: Colors.black54, offset: Offset(1, 1))]
-                                      ),
+                            ),
+                            child: Column(
+                              children: [
+                                // Title section
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 20.0),
+                                  child: Text(
+                                    displayTitle,
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 52,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      shadows: [const Shadow(blurRadius: 8.0, color: Colors.black54, offset: Offset(1, 1))]
                                     ),
                                   ),
-                                  
-                                  // Action Buttons
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-                                        Expanded(
-                                          child: _buildActionButton(
-                                            context: context,
-                                            icon: Icons.spatial_audio_off,
-                                            label: 'Send a Note',
-                                            onTap: () { print('Send Note Tapped'); },
-                                          ),
+                                ),
+                                
+                                // Action Buttons
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                    children: [
+                                      Expanded(
+                                        child: _buildActionButton(
+                                          context: context,
+                                          icon: Icons.spatial_audio_off,
+                                          label: 'Send a Note',
+                                          onTap: () { print('Send Note Tapped'); },
                                         ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: _buildActionButton(
-                                            context: context,
-                                            icon: Icons.ios_share,
-                                            label: 'Invite Guests',
-                                            onTap: () => _shareInvitation(context, displayMoment),
-                                          ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: _buildActionButton(
+                                          context: context,
+                                          icon: Icons.ios_share,
+                                          label: 'Invite Guests',
+                                          onTap: () => _shareInvitation(context, displayMoment),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 32),
+                                
+                                // Contributions Section
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                                  child: Text(
+                                    'Contributions', 
+                                    style: theme.textTheme.headlineSmall?.copyWith(
+                                      color: Colors.white.withOpacity(0.9),
+                                      fontWeight: FontWeight.w600,
+                                    )
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                
+                                // Video Button
+                                Center(
+                                  child: _buildVideoButton(context, displayMoment),
+                                ),
+                                const SizedBox(height: 24),
+
+                                // Placeholder for video list/grid
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                                  child: Container(
+                                    height: 140,
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(16),
+                                      color: Colors.transparent,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Use StreamBuilder to display actual video clips
+                                        SizedBox(
+                                          height: 140,
+                                          child: _buildContributionCards(context, displayMoment),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: 32),
-                                  
-                                  // Contributions Section
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                                    child: Text(
-                                      'Contributions', 
-                                      style: theme.textTheme.headlineSmall?.copyWith(
-                                        color: Colors.white.withOpacity(0.9),
-                                        fontWeight: FontWeight.w600,
-                                      )
-                                    ),
+                                ),
+                                const SizedBox(height: 24),
+                             
+                                // Delivery Countdown if date is set and only for host
+                                if (displayMoment.deliveryDate != null && 
+                                   displayMoment.organizerId == FirebaseAuth.instance.currentUser?.uid)
+                                  DeliveryCountdownTimer(
+                                    deliveryDate: displayMoment.deliveryDate,
+                                    isHost: displayMoment.organizerId == FirebaseAuth.instance.currentUser?.uid,
+                                    onDeliveryComplete: () => _handleDeliveryComplete(context, displayMoment),
+                                    onChangeDate: () => _changeDeliveryDate(context, displayMoment, ScaffoldMessenger.of(context)),
                                   ),
-                                  const SizedBox(height: 16),
-                                  
-                                  // Video Button
-                                  Center(
-                                    child: _buildVideoButton(context, displayMoment),
-                                  ),
-                                  const SizedBox(height: 24),
-
-                                  // Placeholder for video list/grid
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                                    child: Container(
-                                      height: 140,
-                                      width: double.infinity,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(16),
-                                        color: Colors.transparent,
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          // Use StreamBuilder to display actual video clips
-                                          SizedBox(
-                                            height: 140,
-                                            child: StreamBuilder<List<VideoClip>>(
-                                              stream: context.read<DatabaseService>().getVideoClipsForProject(displayMoment.id),
-                                              builder: (context, snapshot) {
-                                                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                                                  return const Center(child: CircularProgressIndicator());
-                                                }
-                                                
-                                                final clips = snapshot.data ?? [];
-                                                final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-                                                final bool hasContributed = currentUserId != null && 
-                                                    clips.any((clip) => clip.contributorId == currentUserId);
-                                                
-                                                // Always show 3 items (placeholders or real videos)
-                                                return ListView.separated(
-                                                  scrollDirection: Axis.horizontal,
-                                                  itemCount: 3,
-                                                  separatorBuilder: (context, index) => const SizedBox(width: 12),
-                                                  itemBuilder: (context, index) {
-                                                    // If we have a clip at this index, show it
-                                                    if (index < clips.length) {
-                                                      return _buildVideoThumbnail(clips[index]);
-                                                    } else {
-                                                      // Otherwise show a placeholder with different colors based on index
-                                                      final colors = [
-                                                        [Colors.blue.withOpacity(0.3), Colors.indigo.withOpacity(0.3)],
-                                                        [Colors.purple.withOpacity(0.3), Colors.pink.withOpacity(0.3)],
-                                                        [Colors.amber.withOpacity(0.3), Colors.orange.withOpacity(0.3)]
-                                                      ];
-                                                      return _buildVideoPlaceholder(
-                                                        color1: colors[index % 3][0], 
-                                                        color2: colors[index % 3][1]
-                                                      );
-                                                    }
-                                                  },
-                                                );
-                                              },
-                                            ),
+                             
+                                // Final Video Compilation Placeholder
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+                                      child: Container(
+                                        height: displayMoment.compiledVideoUrl != null ? 180 : 180,
+                                        width: double.infinity,
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              Colors.white.withOpacity(0.25),
+                                              Colors.white.withOpacity(0.15),
+                                            ],
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 24),
-
-                                  // Final Video Compilation Placeholder
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(16),
-                                      child: BackdropFilter(
-                                        filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
-                                        child: Container(
-                                          height: displayMoment.compiledVideoUrl != null ? 180 : 180,
-                                          width: double.infinity,
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                              colors: [
-                                                Colors.white.withOpacity(0.25),
-                                                Colors.white.withOpacity(0.15),
-                                              ],
-                                            ),
-                                            borderRadius: BorderRadius.circular(16),
-                                            border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
-                                          ),
-                                          child: displayMoment.compiledVideoUrl != null
-                                            ? _buildCompiledVideoPreview(displayMoment)
-                                            : _buildCreateVideoSection(displayMoment),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
                                         ),
+                                        child: displayMoment.compiledVideoUrl != null
+                                          ? _buildCompiledVideoPreview(displayMoment)
+                                          : _buildCreateVideoSection(displayMoment),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  
-                                  // Invitees Section
-                                  InviteListComponent(
-                                    projectId: displayMoment.id,
-                                    invitationService: InvitationService(),
-                                    onAddNewInvite: () => _shareInvitation(context, displayMoment),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  
-                                  // Hosted By Card
-                                  Center(
-                                    child: _buildHostedByCard(context, initials, displayOrganizerName),
-                                  ),
-                                  SizedBox(height: bottomPadding > 0 ? bottomPadding + 10 : 20),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(height: 4),
+                                
+                                // Invitees Section
+                                InviteListComponent(
+                                  projectId: displayMoment.id,
+                                  invitationService: InvitationService(),
+                                  onAddNewInvite: () => _shareInvitation(context, displayMoment),
+                                ),
+                                const SizedBox(height: 16),
+                                
+                                // Hosted By Card
+                                Center(
+                                  child: _buildHostedByCard(context, initials, displayOrganizerName),
+                                ),
+                                SizedBox(height: bottomPadding > 0 ? bottomPadding + 10 : 20),
+                              ],
                             ),
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                  // Close button in top-left corner
+                    ),
+                  ],
+                ),
+                
+                // Close button in top-left corner
+                Positioned(
+                  top: topPadding + 40, // Increased from 16 to 40 to move it lower
+                  left: 16,
+                  child: _buildCloseButton(context),
+                ),
+                
+                // Edit button in top-right corner (only for project organizer)
+                if (displayMoment.organizerId == FirebaseAuth.instance.currentUser?.uid)
                   Positioned(
-                    top: topPadding + 40, // Increased from 16 to 40 to move it lower
-                    left: 16,
-                    child: _buildCloseButton(context),
+                    top: topPadding + 40,
+                    right: 16,
+                    child: _buildEditButton(context, displayMoment),
                   ),
-                ],
-              ),
+              ],
             ),
           ),
         );
@@ -643,12 +610,10 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
 
   // Helper to get the background image provider
   ImageProvider _getBackgroundImageProvider() {
-     if (widget.initialMoment.coverImageUrl != null && widget.initialMoment.coverImageUrl!.isNotEmpty) {
-       return CachedNetworkImageProvider(widget.initialMoment.coverImageUrl!);
-     } else {
-       // Consistent placeholder fallback
-       return const AssetImage('assets/images/placeholder.png');
-     }
+    return ImageProviderUtil.getSafeImageProvider(
+      imagePath: widget.initialMoment.coverImageUrl,
+      fallbackAssetPath: 'assets/images/placeholder.png'
+    );
   }
 
   // Helper to build action buttons with enhanced glassmorphism
@@ -676,11 +641,11 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
               onTap: onTap,
               splashColor: Colors.white.withOpacity(0.1),
               highlightColor: Colors.white.withOpacity(0.05),
-              child: Padding(
+                child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+                     children: [
                     Icon(
                       icon, 
                       size: 20, 
@@ -935,7 +900,7 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
                 color: Colors.white70,
                 size: 32,
               ),
-              const SizedBox(height: 8),
+                        const SizedBox(height: 8),
               Container(
                 width: 70,
                 height: 8,
@@ -1026,7 +991,7 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                        const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0),
                   child: Text(
@@ -1152,7 +1117,9 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
           );
         }
       } finally {
-        if (mounted) setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -1238,6 +1205,234 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // Helper to build an elegant edit button
+  Widget _buildEditButton(BuildContext context, Project project) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(30),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+        child: Container(
+          height: 40,
+          width: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight, 
+              colors: [
+                Colors.white.withOpacity(0.3),
+                Colors.white.withOpacity(0.15),
+              ],
+            ),
+            border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => _showEditOptionsDialog(context, project),
+              splashColor: Colors.white.withOpacity(0.1),
+              highlightColor: Colors.white.withOpacity(0.05),
+              child: const Center(
+                child: Icon(
+                  Icons.edit_outlined,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Show edit options dialog
+  void _showEditOptionsDialog(BuildContext context, Project project) {
+    final theme = Theme.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigatorContext = context;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.shade900,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit_note, size: 24, color: Colors.blue.shade300),
+                      const SizedBox(width: 16),
+                      Text(
+                        'Edit Moment',
+                        style: GoogleFonts.nunito(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Divider(height: 1, color: Colors.white24),
+                ListTile(
+                  leading: const Icon(Icons.calendar_today, color: Colors.white),
+                  title: Text(
+                    project.deliveryDate == null 
+                      ? 'Set Delivery Date' 
+                      : 'Change Delivery Date',
+                    style: GoogleFonts.nunito(color: Colors.white),
+                  ),
+                  subtitle: project.deliveryDate != null 
+                    ? Text(
+                        DateFormat.yMMMMd().format(project.deliveryDate!.toDate()),
+                        style: GoogleFonts.nunito(color: Colors.white70, fontSize: 12),
+                      )
+                    : null,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _changeDeliveryDate(navigatorContext, project, scaffoldMessenger);
+                  },
+                ),
+                const Divider(height: 1, color: Colors.white24),
+                ListTile(
+                  leading: const Icon(Icons.title, color: Colors.white),
+                  title: Text(
+                    'Edit Title',
+                    style: GoogleFonts.nunito(color: Colors.white),
+                  ),
+                  subtitle: Text(
+                    project.title,
+                    style: GoogleFonts.nunito(color: Colors.white70, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showEditTitleDialog(navigatorContext, project, scaffoldMessenger);
+                  },
+                ),
+                const Divider(height: 1, color: Colors.white24),
+                ListTile(
+                  leading: const Icon(Icons.image, color: Colors.white),
+                  title: Text(
+                    project.coverImageUrl == null ? 'Add Cover Image' : 'Change Cover Image',
+                    style: GoogleFonts.nunito(color: Colors.white),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _handleImageTap(true, project);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Show edit title dialog
+  void _showEditTitleDialog(BuildContext context, Project project, ScaffoldMessengerState scaffoldMessenger) {
+    final TextEditingController titleController = TextEditingController(text: project.title);
+    
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.grey.shade900,
+        title: Text(
+          'Edit Title',
+          style: GoogleFonts.nunito(color: Colors.white),
+        ),
+        content: TextField(
+          controller: titleController,
+          style: GoogleFonts.nunito(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Enter new title',
+            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.blue.shade300),
+            ),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.nunito(color: Colors.white70),
+            ),
+            onPressed: () => Navigator.pop(dialogContext),
+          ),
+          TextButton(
+            child: Text(
+              'Save',
+              style: GoogleFonts.nunito(color: Colors.blue.shade300),
+            ),
+            onPressed: () async {
+              final newTitle = titleController.text.trim();
+              if (newTitle.isNotEmpty && newTitle != project.title) {
+                Navigator.pop(dialogContext);
+                
+                setState(() => _isLoading = true);
+                try {
+                  final success = await context.read<DatabaseService>().updateProject(
+                    project.id,
+                    {'title': newTitle},
+                  );
+                  
+                  if (mounted && success) {
+                    scaffoldMessenger.showSnackBar(
+                      const SnackBar(
+                        content: Text('Title updated successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Error updating title: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } finally {
+                  if (mounted) {
+                    setState(() => _isLoading = false);
+                  }
+                }
+              } else {
+                Navigator.pop(dialogContext);
+              }
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1656,5 +1851,769 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
         ),
       ],
     );
+  }
+
+  // Enhanced widget to build contribution cards showing status
+  Widget _buildContributionCards(BuildContext context, Project project) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _combineInvitationsAndClips(project.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        final List<Map<String, dynamic>> contributionData = snapshot.data ?? [];
+        
+        // If no data, show empty placeholders
+        if (contributionData.isEmpty) {
+          return ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: 3,
+            itemBuilder: (context, index) {
+              // Use different gradient colors for visual appeal
+              final colors = [
+                [Colors.purple.withOpacity(0.3), Colors.blue.withOpacity(0.3)],
+                [Colors.orange.withOpacity(0.3), Colors.pink.withOpacity(0.3)],
+                [Colors.teal.withOpacity(0.3), Colors.green.withOpacity(0.3)],
+              ];
+              return Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: _buildEmptyPlaceholder(colors[index][0], colors[index][1]),
+              );
+            },
+          );
+        }
+        
+        // Display contributions with status
+        return ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: contributionData.length,
+          itemBuilder: (context, index) {
+            final item = contributionData[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: _buildContributionCard(context, project, item),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Stream that combines invitations and video clips for a unified view
+  Stream<List<Map<String, dynamic>>> _combineInvitationsAndClips(String projectId) {
+    final DatabaseService databaseService = DatabaseService();
+    final InvitationService invitationService = InvitationService();
+    
+    return Rx.combineLatest2(
+      invitationService.getInvitationsForProject(projectId),
+      databaseService.getVideoClipsForProject(projectId),
+      (QuerySnapshot invitationsSnapshot, List<VideoClip> clips) {
+        final List<Map<String, dynamic>> result = [];
+        
+        // Process invitations
+        for (var doc in invitationsSnapshot.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final inviteeEmail = data['email'] as String;
+          final inviteeName = data['name'] as String;
+          final status = data['status'] as String;
+          final invitedAt = data['invitedAt'] as Timestamp;
+          final lastReminded = data['lastReminded'] as Timestamp?;
+          
+          // Check if this invitation already has a video contribution
+          final hasContributed = clips.any((clip) => 
+            clip.contributorName == inviteeName || 
+            (clip.contributorId.isNotEmpty && data.containsKey('contributorId') && clip.contributorId == data['contributorId'])
+          );
+          
+          // Only add if no contribution exists yet
+          if (!hasContributed) {
+            result.add({
+              'type': 'invitation',
+              'name': inviteeName,
+              'email': inviteeEmail,
+              'status': status,
+              'timestamp': invitedAt,
+              'lastReminded': lastReminded,
+              'id': doc.id,
+            });
+          }
+        }
+        
+        // Add all video clips as completed contributions
+        for (var clip in clips) {
+          result.add({
+            'type': 'clip',
+            'name': clip.contributorName,
+            'contributorId': clip.contributorId,
+            'timestamp': clip.createdAt,
+            'videoUrl': clip.videoUrl,
+            'id': clip.id,
+          });
+        }
+        
+        return result;
+      }
+    ).onErrorReturn([]);
+  }
+
+  // Widget for a single contribution card
+  Widget _buildContributionCard(BuildContext context, Project project, Map<String, dynamic> item) {
+    final isHost = FirebaseAuth.instance.currentUser?.uid == project.organizerId;
+    final itemType = item['type'] as String;
+    final name = item['name'] as String;
+    
+    if (itemType == 'clip') {
+      // This is a completed contribution with a video
+      return _buildCompletedContribution(context, item);
+    } else {
+      // This is a pending invitation
+      return _buildPendingContribution(context, project, item, isHost);
+    }
+  }
+
+  // Widget for an empty placeholder when no invitations exist
+  Widget _buildEmptyPlaceholder(Color color1, Color color2) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        splashColor: Colors.white.withOpacity(0.1),
+        highlightColor: Colors.white.withOpacity(0.05),
+        onTap: () => _shareInvitation(context, widget.initialMoment),
+        child: Container(
+          width: 120,
+          height: 160,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [color1, color2],
+            ),
+            border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.person_add_alt_rounded,
+                color: Colors.white70,
+                size: 36,
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'Invite Someone',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.nunito(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+             const SizedBox(height: 8),
+              Container(
+                width: 70,
+                height: 8,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.white.withOpacity(0.3),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget for a pending contribution (invitation sent but no video yet)
+  Widget _buildPendingContribution(BuildContext context, Project project, Map<String, dynamic> item, bool isHost) {
+    final status = item['status'] as String;
+    final name = item['name'] as String;
+    final timestamp = item['timestamp'] as Timestamp;
+    final lastReminded = item['lastReminded'] as Timestamp?;
+    final id = item['id'] as String;
+    
+    // Calculate if we can send a reminder (only once per day)
+    bool canRemind = isHost && (lastReminded == null || 
+      DateTime.now().difference(lastReminded.toDate()).inHours >= 24);
+      
+    return Container(
+      width: 120,
+      height: 160,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.amber.withOpacity(0.3),
+            Colors.orange.withOpacity(0.3),
+          ],
+        ),
+        border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          splashColor: Colors.white.withOpacity(0.1),
+          onTap: isHost ? () => _showInviteStatusDialog(context, item, project) : null,
+          child: Stack(
+            children: [
+              // Status indicator at the top
+              Align(
+                alignment: Alignment.topCenter,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.2),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.person,
+                            color: Colors.amber.shade600,
+                            size: 10,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        status == 'accepted' ? 'Joined' : 'Invited',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Content
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
+                  child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                     children: [
+                    // User avatar
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: Colors.white.withOpacity(0.2),
+                      child: Text(
+                        _getInitials(name),
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    
+                    // Name
+                    Text(
+                      name,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.nunito(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 4),
+                    
+                    // Status with icon
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.hourglass_empty,
+                          size: 12,
+                          color: Colors.white.withOpacity(0.8),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Pending',
+                          style: GoogleFonts.nunito(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Remind button for host
+              if (project.organizerId == FirebaseAuth.instance.currentUser?.uid && canRemind)
+                Positioned(
+                  bottom: 8,
+                  right: 8,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.2),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(
+                        Icons.notifications_none,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => _sendReminder(context, project, item),
+                      tooltip: 'Send Reminder',
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget for a completed contribution with a video
+  Widget _buildCompletedContribution(BuildContext context, Map<String, dynamic> item) {
+    final name = item['name'] as String;
+    final videoUrl = item['videoUrl'] as String;
+    final timestamp = item['timestamp'] as Timestamp;
+    final contributorId = item['contributorId'] as String;
+    
+    // Check if this contributor is the host
+    final bool isHost = widget.initialMoment.organizerId == contributorId;
+    
+    return Container(
+      width: 120,
+      height: 160,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isHost ? [
+            Colors.amber.withOpacity(0.5),
+            Colors.orange.withOpacity(0.5),
+          ] : [
+            Colors.blue.withOpacity(0.4),
+            Colors.purple.withOpacity(0.4),
+          ],
+        ),
+        border: Border.all(
+          color: isHost ? Colors.amber.withOpacity(0.5) : Colors.white.withOpacity(0.3), 
+          width: isHost ? 1.0 : 0.5
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          splashColor: Colors.white.withOpacity(0.1),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => VideoPlayerScreen(
+                  videoUrl: videoUrl,
+                  contributorName: name,
+                ),
+              ),
+            );
+          },
+          child: Stack(
+            children: [
+              // Status indicator at the top
+              Align(
+                alignment: Alignment.topCenter,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isHost ? Colors.amber.withOpacity(0.4) : Colors.green.withOpacity(0.3),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (isHost)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.workspace_premium,
+                              color: Colors.amber.shade600,
+                              size: 10,
+                            ),
+                          ),
+                        ),
+                      Text(
+                        isHost ? 'Host' : 'Completed',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Content
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // User avatar
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: isHost 
+                          ? Colors.amber.withOpacity(0.3)
+                          : Colors.white.withOpacity(0.2),
+                      child: Text(
+                        _getInitials(name),
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    
+                    // Name
+                    Text(
+                      name,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.nunito(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 4),
+                    
+                    // Added date with check icon
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          size: 12,
+                          color: isHost ? Colors.amber.withOpacity(0.8) : Colors.green.withOpacity(0.8),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatDate(timestamp),
+                          style: GoogleFonts.nunito(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Play indicator
+             Center(
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black.withOpacity(0.3),
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Helper method to send a reminder to invited participants
+  Future<void> _sendReminder(BuildContext context, Project project, Map<String, dynamic> invitation) async {
+    try {
+      final invitationService = InvitationService();
+      await invitationService.sendReminder(
+        projectId: project.id,
+        invitationId: invitation['id'],
+        recipientName: invitation['name'],
+        recipientEmail: invitation['email'],
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Reminder sent to ${invitation['name']}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send reminder: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Show detailed status dialog for an invitation
+  void _showInviteStatusDialog(BuildContext context, Map<String, dynamic> invitation, Project project) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Invitation Status',
+          style: GoogleFonts.nunito(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildStatusRow('Name', invitation['name']),
+              _buildStatusRow('Email', invitation['email']),
+              _buildStatusRow('Status', invitation['status']),
+              _buildStatusRow('Invited On', _formatDateTime(invitation['timestamp'])),
+              if (invitation['lastReminded'] != null)
+                _buildStatusRow('Last Reminded', _formatDateTime(invitation['lastReminded'])),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.nunito(color: Colors.white70),
+            ),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          TextButton(
+            child: Text(
+              'Send Reminder',
+              style: GoogleFonts.nunito(color: Colors.blue),
+            ),
+            onPressed: () {
+              Navigator.of(context).pop();
+              _sendReminder(context, project, invitation);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper for status dialog rows
+  Widget _buildStatusRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: GoogleFonts.nunito(
+                fontWeight: FontWeight.bold,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: GoogleFonts.nunito(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Format date from timestamp
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    return DateFormat.MMMd().format(date);
+  }
+
+  // Format date and time from timestamp
+  String _formatDateTime(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    return DateFormat.yMMMd().add_jm().format(date);
+  }
+
+  // Helper to handle delivery completion
+  Future<void> _handleDeliveryComplete(BuildContext context, Project project) async {
+    if (project.isDelivered == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This moment has already been delivered.')),
+      );
+      return;
+    }
+    
+    if (project.compiledVideoUrl == null || project.compiledVideoUrl!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please compile a video before delivering.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final success = await _deliveryService.deliverProject(context, project);
+      
+      if (success && mounted) {
+        // Show celebration dialog
+        await _deliveryService.showDeliveryCelebration(context, project);
+      }
+    } catch (e) {
+      print('Error during delivery: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Delivery error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // Helper to change the delivery date
+  Future<void> _changeDeliveryDate(BuildContext context, Project project, ScaffoldMessengerState scaffoldMessenger) async {
+    final DateTime initialDate = project.deliveryDate?.toDate() ?? 
+                            DateTime.now().add(const Duration(days: 1));
+    
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+    );
+    
+    if (picked != null && mounted) {
+      setState(() => _isLoading = true);
+      
+      try {
+        final success = await _deliveryService.updateDeliveryDate(project.id, picked);
+        
+        if (success && mounted) {
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text('Delivery date updated!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else if (mounted) {
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text('Failed to update delivery date.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        print('Error updating delivery date: $e');
+        if (mounted) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
   }
 } 

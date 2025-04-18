@@ -7,10 +7,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart'; // Import palette_generator
-import 'package:flutter/services.dart' show rootBundle; // Import for rootBundle
+import 'package:flutter/services.dart' show rootBundle, HapticFeedback; // Import for rootBundle and haptic feedback
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:math' as math;
 import 'package:flutter/animation.dart';
+import 'package:flutter/rendering.dart';
+import 'dart:ui' show ImageFilter;
 
 import '../../../services/auth_service.dart';
 import '../../../services/database_service.dart';
@@ -18,6 +20,7 @@ import '../../../models/project.dart';
 import '../../moment_detail/presentation/moment_detail_screen.dart';
 import '../../create_moment/presentation/create_moment_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
+import '../../../utils/image_provider_util.dart'; // Import our new utility class
 
 // Replace SF Pro Rounded text style extension with Nunito text styles
 extension NunitoText on TextTheme {
@@ -113,46 +116,45 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     // --- Fallback to dynamic generation if hex colors are missing --- 
     print('[_generateGradient] Pre-computed colors missing. Falling back to dynamic generation.');
-    ImageProvider imageProvider;
-    String imageSourceInfo;
-
-    if (project.coverImageUrl != null && project.coverImageUrl!.isNotEmpty) {
-      imageSourceInfo = 'Network: ${project.coverImageUrl}';
-      imageProvider = CachedNetworkImageProvider(project.coverImageUrl!); 
-    } else {
-      // Use pageIndex for asset fallback
-      final assetIndex = pageIndex % 3; // Assuming 3 default assets
-      final fallbackAssetPath = 'assets/images/${assetIndex + 1}.png';
-      imageSourceInfo = 'Asset fallback: $fallbackAssetPath'; 
-      imageProvider = AssetImage(fallbackAssetPath);
-    }
-
-    print('[PaletteGenerator] Using image source for fallback: $imageSourceInfo');
+    
+    // Create image provider safely
+    final ImageProvider imageProvider = _getSafeImageProvider(project.coverImageUrl, pageIndex);
+    
     try {
-      final PaletteGenerator palette = await PaletteGenerator.fromImageProvider(
-        imageProvider, 
-        maximumColorCount: 16, 
+      // Generate palette from image
+      final PaletteGenerator paletteGenerator = await PaletteGenerator.fromImageProvider(
+        imageProvider,
+        size: const Size(200, 200), // Reduced size for performance
+        maximumColorCount: 10,
       );
-      // ... (Same color selection logic as before) ...
-       Color topColorFb = palette.darkVibrantColor?.color ?? palette.darkMutedColor?.color ?? Colors.black;
-       Color middleColorFb = palette.vibrantColor?.color ?? palette.lightVibrantColor?.color ?? palette.dominantColor?.color ?? const Color(0xFF333333);
-       Color bottomColorFb = palette.darkMutedColor?.color ?? palette.dominantColor?.color.withAlpha(200) ?? const Color(0xFF1A1A1A);
-       if (topColorFb == middleColorFb) { middleColorFb = palette.lightMutedColor?.color ?? palette.dominantColor?.color ?? middleColorFb; }
-       if (topColorFb == bottomColorFb || middleColorFb == bottomColorFb) { bottomColorFb = topColorFb == Colors.black ? const Color(0xFF111111) : Colors.black; }
-       if (topColorFb == middleColorFb && middleColorFb == bottomColorFb) { middleColorFb = middleColorFb.withAlpha(200); bottomColorFb = middleColorFb.withAlpha(150); }
+      
+      Color topColorFb = paletteGenerator.darkVibrantColor?.color ?? paletteGenerator.darkMutedColor?.color ?? Colors.black;
+      Color middleColorFb = paletteGenerator.vibrantColor?.color ?? paletteGenerator.lightVibrantColor?.color ?? paletteGenerator.dominantColor?.color ?? const Color(0xFF333333);
+      Color bottomColorFb = paletteGenerator.darkMutedColor?.color ?? paletteGenerator.dominantColor?.color.withAlpha(200) ?? const Color(0xFF1A1A1A);
+      if (topColorFb == middleColorFb) { middleColorFb = paletteGenerator.lightMutedColor?.color ?? paletteGenerator.dominantColor?.color ?? middleColorFb; }
+      if (topColorFb == bottomColorFb || middleColorFb == bottomColorFb) { bottomColorFb = topColorFb == Colors.black ? const Color(0xFF111111) : Colors.black; }
+      if (topColorFb == middleColorFb && middleColorFb == bottomColorFb) { middleColorFb = middleColorFb.withAlpha(200); bottomColorFb = middleColorFb.withAlpha(150); }
 
       final resultGradient = [topColorFb, middleColorFb, bottomColorFb];
       print('[PaletteGenerator] Fallback result gradient: $resultGradient');
       return resultGradient;
 
     } catch (e, stackTrace) {
-      print('[PaletteGenerator] ERROR during fallback generation for ${project.id} using $imageSourceInfo:\n$e\n$stackTrace');
+      print('[PaletteGenerator] ERROR during fallback generation for ${project.id} using $imageProvider:\n$e\n$stackTrace');
       return [ 
         Colors.black,
         const Color(0xFF231F20),
         const Color(0xFF2D2424),
       ];
     }
+  }
+
+  // Updated to use the utility class
+  ImageProvider _getSafeImageProvider(String? imageUrl, int index) {
+    return ImageProviderUtil.getSafeImageProvider(
+      imagePath: imageUrl,
+      fallbackIndex: index
+    );
   }
 
   // Update function uses the new _generateGradient method
@@ -218,6 +220,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     // Dependencies needed by FutureBuilder and StreamBuilder
     final userId = context.select<User?, String?>((user) => user?.uid);
+    final user = Provider.of<User?>(context);
     final dbService = context.watch<DatabaseService>();
     final theme = Theme.of(context);
 
@@ -326,47 +329,113 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- Custom Header Row --- 
-                const SizedBox(height: 8.0),
+                // --- Enhanced Header Area with personalization --- 
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                  padding: const EdgeInsets.fromLTRB(24.0, 8.0, 24.0, 0.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title with Nunito font
-                      Text(
-                        'Moments',
-                        style: theme.textTheme.appTitle,
+                      // App Title and Action Buttons Row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Title with Nunito font
+                          Text(
+                            'Moments',
+                            style: theme.textTheme.appTitle,
+                          ),
+                          const Spacer(),
+                          // Add Button with improved feedback
+                          Material(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(30),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(30),
+                              onTap: () {
+                                HapticFeedback.mediumImpact();
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const CreateMomentScreen()),
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(30),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.2),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.add_circle_outline, 
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // Profile Button with improved feedback
+                          Material(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(30),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(30),
+                              onTap: () {
+                                HapticFeedback.mediumImpact();
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(30),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.2),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.account_circle, 
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const Spacer(),
-                      // Add Button
-                      IconButton(
-                        icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-                        iconSize: 28.0,
-                        tooltip: 'Create Moment',
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const CreateMomentScreen()),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      // Profile Button
-                      IconButton(
-                        icon: const Icon(Icons.account_circle, color: Colors.white),
-                        iconSize: 28.0,
-                        tooltip: 'Settings',
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                          );
-                        },
-                      ),
+                      
+                      // Personalized welcome message
+                      if (user != null && user.displayName != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Hello, ${user.displayName!.split(' ')[0]}',
+                                style: GoogleFonts.nunito(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white.withOpacity(0.9),
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '👋', 
+                                style: TextStyle(fontSize: 16)
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
+                
                 // --- Main Content Area uses StreamBuilder for updates ---
                 Expanded(
                   child: userId == null
@@ -493,8 +562,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 }
 
-// MomentsPageView is now StatelessWidget
-class MomentsPageView extends StatelessWidget {
+// Enhanced version of MomentsPageView with subtle floating animation
+class MomentsPageView extends StatefulWidget {
   final List<Project> moments;
   final String? userId;
   final ValueChanged<int> onPageChanged; // Callback function
@@ -505,79 +574,186 @@ class MomentsPageView extends StatelessWidget {
     required this.userId,
     required this.onPageChanged, // Accept callback
   });
+
+  @override
+  State<MomentsPageView> createState() => _MomentsPageViewState();
+}
+
+class _MomentsPageViewState extends State<MomentsPageView> with SingleTickerProviderStateMixin {
+  late PageController pageController;
+  late ValueNotifier<int> currentPageNotifier;
+  
+  @override
+  void initState() {
+    super.initState();
+    pageController = PageController(viewportFraction: 0.85);
+    currentPageNotifier = ValueNotifier<int>(0);
+  }
+
+  @override
+  void dispose() {
+    pageController.dispose();
+    currentPageNotifier.dispose();
+    super.dispose();
+  }
+  
+  // Function to handle page changes and update the indicator
+  void handlePageChanged(int index) {
+    currentPageNotifier.value = index;
+    widget.onPageChanged(index);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    print('[MomentsPageView] build method');
+    
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Add a subtle page indicator at the top
+        Container(
+          height: 6,
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          width: MediaQuery.of(context).size.width,
+          child: ValueListenableBuilder<int>(
+            valueListenable: currentPageNotifier,
+            builder: (context, currentPage, _) {
+              return PageIndicator(
+                count: widget.moments.length,
+                currentIndex: currentPage,
+                onPageChanged: (index) {
+                  // Animate to the selected page
+                  pageController.animateToPage(
+                    index,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        
+        // Main card container with simplified rendering
+        Expanded(
+          child: PageView.builder(
+            itemCount: widget.moments.length,
+            controller: pageController,
+            onPageChanged: handlePageChanged,
+            itemBuilder: (context, index) {
+              final imageIndexForCard = index % 3;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 20.0),
+                child: Hero(
+                  tag: 'moment-${widget.moments[index].id}',
+                  child: _EnhancedMomentCard(
+                    moment: widget.moments[index],
+                    imageIndex: imageIndexForCard,
+                    currentUserId: widget.userId,
+                    isActive: currentPageNotifier.value == index,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        
+        // Add a subtle hint to indicate users can tap to open moments
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.touch_app, size: 16, color: Colors.white.withOpacity(0.7)),
+              const SizedBox(width: 6),
+              Text(
+                'Tap to open',
+                style: GoogleFonts.nunito(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// New page indicator widget with improved visual hierarchy
+class PageIndicator extends StatelessWidget {
+  final int count;
+  final int currentIndex;
+  final ValueChanged<int> onPageChanged;
+  
+  const PageIndicator({
+    super.key,
+    required this.count,
+    required this.currentIndex,
+    required this.onPageChanged,
+  });
   
   @override
   Widget build(BuildContext context) {
-     print('[MomentsPageView] build method');
-    // No AnimatedContainer here anymore
-    return Center(
-      child: Column(
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(height: 20),
-          Container(
-            height: 550,
-            child: PageView.builder(
-              itemCount: moments.length,
-              controller: PageController(viewportFraction: 0.9),
-              onPageChanged: onPageChanged, // Use the passed callback
-              itemBuilder: (context, index) {
-                final imageIndexForCard = index % 3; // Still assuming cyclic assets
-                return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16.0),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(25.0),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 10,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(22.0),
-                      child: _SimpleMomentCard(
-                        moment: moments[index],
-                        imageIndex: imageIndexForCard,
-                        currentUserId: userId,
-                      ),
-                    ),
-                  );
-              },
+        children: List.generate(count, (index) {
+          final bool isActive = index == currentIndex;
+          
+          return GestureDetector(
+            onTap: () => onPageChanged(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: isActive ? 32 : 12, 
+              height: isActive ? 4 : 3,
+              decoration: BoxDecoration(
+                color: isActive 
+                  ? Colors.white 
+                  : Colors.white.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+                boxShadow: isActive ? [
+                  BoxShadow(
+                    color: Colors.white.withOpacity(0.5),
+                    blurRadius: 4,
+                    spreadRadius: 1,
+                  )
+                ] : null,
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-        ],
+          );
+        }),
       ),
     );
   }
 }
 
-// --- Simplified Moment Card with no blur effects ---
-class _SimpleMomentCard extends StatelessWidget {
+// Renamed and enhanced Moment Card with improved visuals
+class _EnhancedMomentCard extends StatelessWidget {
   final Project moment;
   final int imageIndex;
   final String? currentUserId;
+  final bool isActive;
 
-  const _SimpleMomentCard({
+  const _EnhancedMomentCard({
     required this.moment,
     required this.imageIndex,
     required this.currentUserId,
+    this.isActive = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Determine the correct image provider based on coverImageUrl
-    final ImageProvider imageProvider;
-    if (moment.coverImageUrl != null && moment.coverImageUrl!.isNotEmpty) {
-      print('[_SimpleMomentCard] Using Network Image: ${moment.coverImageUrl}');
-      imageProvider = CachedNetworkImageProvider(moment.coverImageUrl!); 
-    } else {
-      // Fallback to asset image using imageIndex
-      final String imagePath = 'assets/images/${(imageIndex % 3) + 1}.png';
-      print('[_SimpleMomentCard] Using Asset Image: $imagePath');
-      imageProvider = AssetImage(imagePath);
+    // Fixed image provider logic to distinguish between assets and network URLs
+    ImageProvider getImageProvider() {
+      return ImageProviderUtil.getSafeImageProvider(
+        imagePath: moment.coverImageUrl,
+        fallbackIndex: imageIndex
+      );
     }
     
     final bool isHosting = currentUserId != null && currentUserId == moment.organizerId;
@@ -587,152 +763,291 @@ class _SimpleMomentCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
+          // Add haptic feedback for a more tactile experience
+          HapticFeedback.mediumImpact();
+          
           showModalBottomSheet(
             context: context,
-            isScrollControlled: true, // Allows modal to take full height
-            backgroundColor: Colors.transparent, // Make background transparent
-            builder: (context) => MomentDetailScreen(moment: moment), // Pass the moment data
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) => MomentDetailScreen(moment: moment),
           );
         },
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Layer 1: Background Image - Use the determined imageProvider
-            Image( // Use generic Image widget
-              image: imageProvider,
-              fit: BoxFit.cover,
-              // Add error builder for network images too
-              errorBuilder: (context, error, stackTrace) {
-                  print("Error loading image: $error"); // Log error
-                  return Container(
-                      color: Colors.grey.shade800, 
-                      child: const Center(child: Icon(Icons.broken_image, color: Colors.grey))
-                  );
-              },
-              // Optional: Add frameBuilder for loading indication if needed
-              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                 if (wasSynchronouslyLoaded) return child;
-                 return AnimatedOpacity(
-                    opacity: frame == null ? 0 : 1,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut,
-                    child: child,
-                 );
-              },
-            ),
-            
-            // Layer: Faded bottom overlay (Simulated blur)
-            Positioned(
-              bottom: 0,
-              left: 0, // Extend to screen edges
-              right: 0, // Extend to screen edges
-              height: 190.0, // Keep fixed height
-              child: ClipRRect(
-                // Round only the top corners
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(25.0), 
-                  topRight: Radius.circular(25.0),
-                ),
-                // Use a Container with a gradient simulating the faded blur
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      // Colors chosen to simulate the frosted look with fade - Increased opacity
-                      colors: [
-                        Colors.transparent,             // Start transparent
-                        const Color(0x4DFFFFFF),        // White @ 30% opacity
-                        const Color(0x7F9E9ABF),        // Light purplish grey @ 50% opacity
-                        const Color(0x998C89A6),        // Slightly darker purplish grey @ 60% opacity
-                      ],
-                      // Stops to control the fade and color transition
-                      stops: const [0.0, 0.15, 0.5, 1.0],
-                    ),
+            // Simple image background with overlay - avoiding transforms
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28.0),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.25),
+                    blurRadius: 20,
+                    spreadRadius: 3,
+                    offset: const Offset(0, 8),
                   ),
-                  child: Center( // Keep text centered
-                    child: Text(
-                      moment.title,
-                      style: GoogleFonts.openSans(
-                        color: Colors.white,
-                        fontSize: 42,
-                        fontWeight: FontWeight.w400,
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 6,
+                    spreadRadius: 1,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28.0),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Basic image
+                    Image(
+                      image: getImageProvider(),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey.shade800,
+                          child: const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 42)),
+                        );
+                      },
+                    ),
+                    // Gradient overlay - no ShaderMask, just a Container
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.2),
+                            Colors.black.withOpacity(0.5),
+                          ],
+                          stops: const [0.0, 0.6, 1.0],
+                        ),
                       ),
                     ),
-                  ),
-                ), 
+                  ],
+                ),
               ),
             ),
             
-            // Layer 5: Hosting Badge (pill-shaped)
+            // Elegant title overlay with enhanced styling
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(28.0),
+                  bottomRight: Radius.circular(28.0),
+                ),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(20, 30, 20, 24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.2),
+                          Colors.black.withOpacity(0.5),
+                        ],
+                        stops: const [0.0, 0.6, 1.0],
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Project title with elegant typography
+                        Text(
+                          moment.title,
+                          style: GoogleFonts.playfairDisplay(
+                            color: Colors.white,
+                            fontSize: 38,
+                            fontWeight: FontWeight.w500,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.3),
+                                offset: const Offset(0, 2),
+                                blurRadius: 5,
+                              ),
+                            ],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        
+                        // Add a subtle divider
+                        Container(
+                          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 80),
+                          height: 1,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.transparent,
+                                Colors.white.withOpacity(0.7),
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 0.5, 1.0],
+                            ),
+                          ),
+                        ),
+                        
+                        // Add contributor count if available
+                        if (moment.contributorIds.isNotEmpty)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.people_outline,
+                                color: Colors.white.withOpacity(0.8),
+                                size: 16,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                '${moment.contributorIds.length} contributor${moment.contributorIds.length == 1 ? '' : 's'}',
+                                style: GoogleFonts.nunito(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            
+            // Enhanced hosting badge with animation
             if (isHosting)
               Positioned(
-                top: 12.0,
-                left: 12.0,
+                top: 16.0,
+                left: 16.0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.4),
+                    color: Colors.white.withOpacity(0.25),
                     borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'Hosting',
-                    style: GoogleFonts.nunito(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.5),
+                      width: 1,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        spreadRadius: 0,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.star_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Hosting',
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
               
-            // Layer 6: Delete button (only visible for organizer)
+            // Redesigned delete button with better visual feedback
             if (isHosting)
               Positioned(
-                top: 12.0,
-                right: 12.0,
+                top: 16.0,
+                right: 16.0,
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
                     borderRadius: BorderRadius.circular(50),
-                    onTap: () => _confirmDelete(context, dbService, moment),
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      _confirmDelete(context, dbService, moment);
+                    },
                     child: Container(
-                      padding: const EdgeInsets.all(8.0),
+                      padding: const EdgeInsets.all(10.0),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.4),
+                        color: Colors.white.withOpacity(0.25),
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.5),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 4,
+                            spreadRadius: 0,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                       child: const Icon(
-                        Icons.delete_outline,
+                        Icons.delete_outline_rounded,
                         color: Colors.white,
                         size: 20,
                       ),
                     ),
                   ),
                 ),
-              )
+              ),
           ],
         ),
       ),
     );
   }
   
-  // Show confirmation dialog before deleting
+  // Enhanced confirmation dialog with animations
   Future<void> _confirmDelete(BuildContext context, DatabaseService dbService, Project moment) async {
     return showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
           ),
-          title: Text(
-            'Delete Moment', 
-            style: GoogleFonts.nunito(
-              color: Colors.white, 
-              fontWeight: FontWeight.w700,
-            ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade300.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.delete_rounded,
+                  color: Colors.red.shade300,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Delete Moment', 
+                style: GoogleFonts.nunito(
+                  color: Colors.white, 
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
           content: Text(
             'Are you sure you want to delete "${moment.title}"? This action cannot be undone.',
@@ -744,6 +1059,12 @@ class _SimpleMomentCard extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
               child: Text(
                 'Cancel', 
                 style: GoogleFonts.nunito(
@@ -752,43 +1073,112 @@ class _SimpleMomentCard extends StatelessWidget {
                 ),
               ),
             ),
-            TextButton(
+            ElevatedButton(
               onPressed: () async {
-                // Close the dialog first
                 Navigator.of(dialogContext).pop();
                 
-                // Show loading indicator
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Deleting moment...'),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
+                // Show a more elegant loading indicator
+                if (context.mounted) {
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 3,
+                        ),
+                      ),
+                    ),
+                  );
+                }
                 
-                // Delete the project
-                final success = await dbService.deleteProject(moment.id);
+                // Delete the project with error handling
+                bool success = false;
+                String errorMessage = '';
                 
-                // Show result
+                try {
+                  // Add a timeout to prevent hanging
+                  success = await dbService.deleteProject(moment.id)
+                      .timeout(const Duration(seconds: 10), onTimeout: () {
+                    throw TimeoutException('Delete operation timed out');
+                  });
+                } catch (e) {
+                  print('Error deleting moment: $e');
+                  errorMessage = e.toString();
+                } finally {
+                  // Always dismiss the loading dialog if mounted
+                  if (context.mounted) {
+                    Navigator.of(context, rootNavigator: true).pop();
+                  }
+                }
+                
+                // Show result with a nicer, animated snackbar
                 if (success && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Moment deleted successfully'),
-                      backgroundColor: Colors.green,
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.white),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Moment deleted successfully',
+                            style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: Colors.green.shade600,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
                   );
                 } else if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Failed to delete moment'),
-                      backgroundColor: Colors.red,
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.white),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Text(
+                              errorMessage.isNotEmpty 
+                                ? 'Failed to delete moment: ${errorMessage.length > 50 ? errorMessage.substring(0, 50) + '...' : errorMessage}'
+                                : 'Failed to delete moment',
+                              style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: Colors.red.shade600,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      duration: const Duration(seconds: 4),
                     ),
                   );
                 }
               },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
               child: Text(
                 'Delete',
                 style: GoogleFonts.nunito(
-                  color: Colors.red, 
+                  color: Colors.white, 
                   fontWeight: FontWeight.w700,
                 ),
               ),

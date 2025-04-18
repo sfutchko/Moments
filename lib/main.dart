@@ -1,22 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
 import 'package:provider/provider.dart'; // Import Provider
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:firebase_app_check/firebase_app_check.dart'; // Import App Check
 import 'package:flutter/foundation.dart'; // Import kDebugMode
+import 'package:app_links/app_links.dart';
+import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'firebase_options.dart'; // Import generated options
 import 'src/services/auth_service.dart'; // Import AuthService
 import 'src/services/database_service.dart'; // Import DatabaseService
 import 'src/services/storage_service.dart'; // Import StorageService
 import 'src/services/invitation_service.dart'; // Import InvitationService
+import 'src/services/deep_link_service.dart'; // Import DeepLinkService
 // Import the wrapper
 import 'src/features/authentication/presentation/auth_wrapper.dart';
 import 'src/features/invitation/presentation/join_project_screen.dart'; // Import JoinProjectScreen
 // TODO: Import home screen (e.g., HomeScreen) if needed directly by main routes later
 
+// Use global flag to disable texture mipmaps for Impeller
+bool _initialUriIsHandled = false;
+
 Future<void> main() async { // Make main async
   WidgetsFlutterBinding.ensureInitialized(); // Ensure bindings are initialized
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform, // Use generated options
   );
@@ -35,7 +44,59 @@ Future<void> main() async { // Make main async
     //   : ReCaptchaEnterpriseProvider('your-recaptcha-enterprise-site-key'), 
   );
   // Removed TODO comment
-  runApp(const MyApp());
+
+  // Create service instances
+  final authService = AuthService();
+  final databaseService = DatabaseService();
+  final storageService = StorageService();
+  final deepLinkService = DeepLinkService(
+    navigatorKey: GlobalKey<NavigatorState>(),
+    onMomentIdReceived: (String momentId) {
+      print('Received moment ID: $momentId');
+      // Navigation will be handled in the MyApp widget
+    },
+  );
+
+  // Initialize deep link handling
+  await deepLinkService.initialize();
+
+  runApp(
+    MultiProvider(
+      providers: [
+        // Provide the AuthService instance
+        Provider<AuthService>(
+          create: (_) => authService,
+        ),
+        // Provide the auth state changes stream
+        StreamProvider<User?>(
+          create: (context) => context.read<AuthService>().authStateChanges,
+          initialData: null, // Or FirebaseAuth.instance.currentUser if needed immediately
+        ),
+        // Database Provider
+        Provider<DatabaseService>(
+           create: (_) => databaseService,
+        ),
+        // Provide StorageService
+        Provider<StorageService>(
+          create: (_) => storageService,
+        ),
+        // Provide InvitationService
+        Provider<InvitationService>(
+          create: (_) => InvitationService(),
+        ),
+        Provider<DeepLinkService>(
+          create: (_) => deepLinkService,
+        ),
+      ],
+      child: const MyApp(),
+    ),
+  );
+}
+
+Future<void> _initDeepLinkHandling(DeepLinkService deepLinkService) async {
+  // Initialize the deep link service
+  await deepLinkService.initialize();
+  print('Deep link handling initialized');
 }
 
 class MyApp extends StatefulWidget {
@@ -47,25 +108,19 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final InvitationService _invitationService = InvitationService();
-  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   
   @override
   void initState() {
     super.initState();
-    // Initialize deep link handling
-    _initDynamicLinks();
-  }
-  
-  void _initDynamicLinks() {
-    // Using built-in Flutter deep link handling (flutter_deeplinking_enabled = true)
-    print('Deep link handling now relies on platform-native mechanisms');
-    
-    // App links and universal links are now handled by the OS and Flutter's built-in
-    // mechanisms. This is configured in AndroidManifest.xml and Info.plist.
+    // No need for extra initialization, handled in main
   }
   
   void _handleDynamicLink(Uri deepLink) {
     print('Got deep link: $deepLink');
+    
+    final deepLinkService = Provider.of<DeepLinkService>(context, listen: false);
+    deepLinkService.handleUri(deepLink);
     
     // Handle join project links
     if (deepLink.pathSegments.contains('join')) {

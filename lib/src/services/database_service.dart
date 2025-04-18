@@ -1,11 +1,13 @@
-import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseFirestore, CollectionReference, DocumentSnapshot, FieldValue, Timestamp, QuerySnapshot;
+import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseFirestore, CollectionReference, DocumentSnapshot, FieldValue, Timestamp, QuerySnapshot, WriteBatch;
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/project.dart'; // Assuming project.dart is in models directory
 import 'package:rxdart/rxdart.dart';
+import 'storage_service.dart'; // Import StorageService
 
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final StorageService _storageService = StorageService();
 
   // Reference to the projects collection
   CollectionReference get projectsCollection => _db.collection('projects');
@@ -117,6 +119,34 @@ class DatabaseService {
   // Delete a project by ID
   Future<bool> deleteProject(String projectId) async {
     try {
+      print('Starting deletion of project: $projectId');
+      
+      // First delete all files in Firebase Storage
+      bool storageDeleted = await _storageService.deleteAllProjectFiles(projectId);
+      print('Storage files deleted: $storageDeleted');
+      
+      // Then delete all clips in the clips subcollection
+      final clipsSnapshot = await _db
+          .collection('projects')
+          .doc(projectId)
+          .collection('clips')
+          .get();
+      
+      print('Found ${clipsSnapshot.docs.length} clips to delete');
+      
+      // Batch delete all clips
+      final WriteBatch batch = _db.batch();
+      for (var doc in clipsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      
+      // Execute the batch operation
+      if (clipsSnapshot.docs.isNotEmpty) {
+        await batch.commit();
+        print('Deleted all clips for project: $projectId');
+      }
+      
+      // Finally delete the main project document
       await projectsCollection.doc(projectId).delete();
       print('Project deleted successfully: $projectId');
       return true;
@@ -212,6 +242,11 @@ class DatabaseService {
       print("Error getting project details synchronously for $projectId: $e");
       return null; // Return null on error
     }
+  }
+
+  /// Get a project by ID - alias for getProjectDetailsSync to match the method name used in JoinProjectScreen
+  Future<Project?> getProjectById(String projectId) async {
+    return getProjectDetailsSync(projectId);
   }
 
   // TODO: Add method to update project (e.g., add contributor, add clip)

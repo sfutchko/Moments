@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Timestamp
 import 'package:image_picker/image_picker.dart'; // Import ImagePicker
 import 'package:palette_generator/palette_generator.dart'; // Import PaletteGenerator
+import 'package:intl/intl.dart';
 
 import '../../../services/auth_service.dart';
 import '../../../services/database_service.dart';
@@ -113,19 +114,37 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
 
   // --- Date Picker --- 
   Future<void> _selectDeliveryDate() async {
-     final DateTime? picked = await showDatePicker(
-        context: context,
-        initialDate: _selectedDeliveryDate ?? DateTime.now().add(const Duration(days: 1)), // Start tomorrow or selected
-        firstDate: DateTime.now(), // Can't schedule in the past
-        lastDate: DateTime.now().add(const Duration(days: 365 * 2)), // Allow scheduling up to 2 years ahead
-        // TODO: Customize date picker theme to match app style
-        // builder: (context, child) { ... }
-     );
-     if (picked != null && picked != _selectedDeliveryDate) {
-        setState(() {
-           _selectedDeliveryDate = picked;
-        });
-     }
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDeliveryDate ?? DateTime.now().add(const Duration(days: 1)), // Start tomorrow or selected
+      firstDate: DateTime.now(), // Can't schedule in the past
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)), // Allow scheduling up to 2 years ahead
+      // Customize date picker theme to match app style
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: Colors.purple.shade300,
+              onPrimary: Colors.white,
+              onSurface: Colors.white,
+              surface: Colors.grey.shade900,
+            ),
+            dialogBackgroundColor: Colors.grey.shade900,
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ), 
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDeliveryDate) {
+      setState(() {
+        _selectedDeliveryDate = picked;
+      });
+    }
   }
 
   // --- Moment Creation Logic --- 
@@ -313,17 +332,36 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                        ),
                        const Divider(color: Colors.white24, height: 1),
                        ListTile(
-                          leading: const Icon(Icons.calendar_today_outlined, color: Colors.white70),
+                          leading: Icon(
+                            _selectedDeliveryDate == null 
+                              ? Icons.calendar_today_outlined 
+                              : Icons.event_available,
+                            color: _selectedDeliveryDate == null ? Colors.white70 : Colors.green.shade300,
+                          ),
                           title: Text(
                             _selectedDeliveryDate == null 
-                               ? 'Schedule Delivery (Optional)' 
-                               // Use DateFormat for nicer formatting if intl is added
-                               // : 'Deliver on: ${DateFormat.yMMMd().format(_selectedDeliveryDate!)}',
-                               : 'Deliver on: ${_selectedDeliveryDate!.month}/${_selectedDeliveryDate!.day}/${_selectedDeliveryDate!.year}', 
-                            style: theme.textTheme.bodyLarge?.copyWith(color: Colors.white),
+                              ? 'Schedule Delivery (Optional)' 
+                              : 'Deliver on: ${DateFormat.yMMMMd().format(_selectedDeliveryDate!)}',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: _selectedDeliveryDate == null ? Colors.white : Colors.green.shade300,
+                              fontWeight: _selectedDeliveryDate == null ? FontWeight.normal : FontWeight.bold,
+                            ),
                           ),
-                          onTap: _selectDeliveryDate, // Call the implemented method
+                          subtitle: _selectedDeliveryDate == null 
+                            ? null
+                            : Text(
+                              'The moment will be delivered automatically on this date',
+                              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
+                            ),
+                          onTap: _selectDeliveryDate,
                           contentPadding: EdgeInsets.zero,
+                          trailing: _selectedDeliveryDate == null
+                            ? null
+                            : IconButton(
+                                icon: Icon(Icons.close, color: Colors.white60, size: 18),
+                                onPressed: () => setState(() => _selectedDeliveryDate = null),
+                                tooltip: 'Clear delivery date',
+                              ),
                        ),
                        const Divider(color: Colors.white24, height: 1),
                        // --- Occasion Selector --- 

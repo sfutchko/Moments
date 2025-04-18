@@ -62,6 +62,8 @@ class Project {
   final String? gradientColorHex3;
   final String? occasion;
   final String? compiledVideoUrl; // URL to the compiled video file
+  final bool? isDelivered; // Whether the project has been delivered
+  final Timestamp? deliveredAt; // When the project was delivered
   // Add other fields as needed
 
   Project({
@@ -78,6 +80,8 @@ class Project {
     this.gradientColorHex3,
     this.occasion,
     this.compiledVideoUrl,
+    this.isDelivered,
+    this.deliveredAt,
   });
 
   // Factory constructor from Firestore DocumentSnapshot
@@ -101,6 +105,8 @@ class Project {
       gradientColorHex3: data['gradientColorHex3'] as String?,
       occasion: data['occasion'] as String?,
       compiledVideoUrl: data['compiledVideoUrl'] as String?,
+      isDelivered: data['isDelivered'] as bool?,
+      deliveredAt: data['deliveredAt'] as Timestamp?,
     );
   }
 
@@ -119,6 +125,8 @@ class Project {
       if (gradientColorHex3 != null) 'gradientColorHex3': gradientColorHex3,
       if (occasion != null) 'occasion': occasion,
       if (compiledVideoUrl != null) 'compiledVideoUrl': compiledVideoUrl,
+      if (isDelivered != null) 'isDelivered': isDelivered,
+      if (deliveredAt != null) 'deliveredAt': deliveredAt,
     };
   }
 } 
