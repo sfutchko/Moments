@@ -98,4 +98,72 @@ class StorageService {
 
   // TODO: Add function to delete video clip if needed
   // Future<bool> deleteVideoClip(String momentId, String clipFileName) async { ... }
+
+  // Delete a video clip from storage
+  Future<bool> deleteVideoClip(String momentId, String videoUrl) async {
+    try {
+      // Extract file name from the download URL 
+      // The URL looks like: https://firebasestorage.googleapis.com/v0/b/bucket/o/moments%2FmomentId%2Fclips%2Fclip_filename.mp4?token...
+      final Uri uri = Uri.parse(videoUrl);
+      final String fullPath = Uri.decodeComponent(uri.path.split('/o/')[1].split('?')[0]);
+      
+      // Create a reference to the file
+      final firebase_storage.Reference ref = _storage.ref().child(fullPath);
+      
+      // Delete the file
+      await ref.delete();
+      print("Video file at path $fullPath deleted successfully.");
+      return true;
+    } catch (e) {
+      print("Error deleting video file: $e");
+      return false;
+    }
+  }
+  
+  // Upload a compiled video for a moment
+  Future<String?> uploadCompiledVideo(String momentId, File videoFile) async {
+    final String? userId = _auth.currentUser?.uid;
+    if (userId == null) {
+      print("Error: User not logged in.");
+      return null;
+    }
+    
+    try {
+      print("Starting compiled video upload for momentId: $momentId");
+      print("Video file exists: ${await videoFile.exists()}");
+      print("Video file size: ${await videoFile.length()} bytes");
+      
+      // Create a unique filename for the compiled video
+      String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      String fileName = 'compiled_${timestamp}.${videoFile.path.split('.').last}';
+      print("Generated filename: $fileName");
+      
+      // Store compiled videos in a separate 'compiled' folder
+      final firebase_storage.Reference ref = _storage.ref().child('moments/$momentId/compiled/$fileName');
+      print("Storage reference path: ${ref.fullPath}");
+      
+      // Upload with appropriate metadata
+      firebase_storage.UploadTask uploadTask = ref.putFile(
+        videoFile,
+        firebase_storage.SettableMetadata(contentType: 'video/mp4'),
+      );
+      
+      // Wait for upload to complete
+      print("Upload task started");
+      firebase_storage.TaskSnapshot snapshot = await uploadTask;
+      print("Upload complete. Task state: ${snapshot.state}");
+      
+      String downloadUrl = await snapshot.ref.getDownloadURL();
+      print("Download URL obtained: $downloadUrl");
+      return downloadUrl;
+    } on firebase_storage.FirebaseException catch (e) {
+      print("Firebase Storage Error during compiled video upload: ${e.code} - ${e.message}");
+      print("Error details: $e");
+      return null;
+    } catch (e) {
+      print("General Error during compiled video upload: $e");
+      print("Error stack trace: ${StackTrace.current}");
+      return null;
+    }
+  }
 } 

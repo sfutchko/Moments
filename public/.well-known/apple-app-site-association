@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TeamID.com.example.mothersDay",
+        "paths": [
+          "/join*",
+          "NOT /_/*"
+        ]
+      }
+    ]
+  }
+} 

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moments for Mom</title>
+  
+  <!-- Smart App Banner for iOS -->
+  <meta name="apple-itunes-app" content="app-id=123456789, app-argument=https://moments-for-mom.web.app">
+  
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #6A3DE8, #FF7D54);
+      color: white;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      max-width: 600px;
+      padding: 30px;
+      background-color: rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+    }
+    h1 {
+      font-size: 2em;
+      margin-bottom: 20px;
+    }
+    p {
+      font-size: 1.2em;
+      margin-bottom: 30px;
+    }
+    .button {
+      display: inline-block;
+      background-color: white;
+      color: #6A3DE8;
+      padding: 15px 30px;
+      border-radius: 30px;
+      text-decoration: none;
+      font-weight: bold;
+      margin: 10px;
+      transition: transform 0.2s;
+    }
+    .button:hover {
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Moments for Mom</h1>
+    <p>You've been invited to contribute to a special video!</p>
+    
+    <div>
+      <a href="https://play.google.com/store/apps/details?id=com.example.mothers_day" class="button">Download for Android</a>
+      <a href="https://apps.apple.com/app/idYOUR_APP_ID" class="button">Download for iOS</a>
+    </div>
+  </div>
+
+  <script>
+    // Get project ID from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const projectId = urlParams.get('projectId');
+    const inviterId = urlParams.get('inviterId');
+    
+    // Set localStorage values that the app can read on launch
+    if (projectId) {
+      localStorage.setItem('pendingProjectId', projectId);
+    }
+    if (inviterId) {
+      localStorage.setItem('pendingInviterId', inviterId);
+    }
+    
+    // Logging for debugging purposes
+    console.log('URL parameters:', {
+      projectId,
+      inviterId,
+      fullUrl: window.location.href
+    });
+  </script>
+</body>
+</html> 

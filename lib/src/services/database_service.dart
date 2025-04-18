@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseFirestore, CollectionReference, DocumentSnapshot, FieldValue, Timestamp, QuerySnapshot;
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/project.dart'; // Assuming project.dart is in models directory
 import 'package:rxdart/rxdart.dart';
@@ -138,10 +138,42 @@ class DatabaseService {
     }
   }
 
+  // Add a user as a contributor to a project
+  Future<bool> addContributorToProject(String projectId, String userId, String userName) async {
+    try {
+      // First get the current document to check if user is already a contributor
+      DocumentSnapshot doc = await projectsCollection.doc(projectId).get();
+      
+      if (!doc.exists) {
+        print('Project $projectId does not exist');
+        return false;
+      }
+      
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+      List<String> contributors = List<String>.from(data['contributorIds'] ?? []);
+      
+      // Check if user is already a contributor
+      if (!contributors.contains(userId)) {
+        // Add the user to the contributorIds array using arrayUnion
+        await projectsCollection.doc(projectId).update({
+          'contributorIds': FieldValue.arrayUnion([userId])
+        });
+        print('Added user $userId as contributor to project $projectId');
+      } else {
+        print('User $userId is already a contributor to project $projectId');
+      }
+      
+      return true;
+    } catch (e) {
+      print('Error adding contributor to project $projectId: $e');
+      return false;
+    }
+  }
+
   // TODO: Add method to get projects for a user
   // Stream<List<Project>> getProjectsForUser(String userId) { ... }
 
-  // Get a stream for a single project document
+  /// Get a stream for a single project document
   Stream<Project?> getProjectDetails(String projectId) {
     return projectsCollection
         .doc(projectId)
@@ -163,6 +195,23 @@ class DatabaseService {
           print("Error fetching project details stream for $projectId: $error");
           return null; // Return null on stream error
         });
+  }
+  
+  /// Get a project's details synchronously (non-stream version)
+  Future<Project?> getProjectDetailsSync(String projectId) async {
+    try {
+      final snapshot = await projectsCollection.doc(projectId).get();
+      
+      if (snapshot.exists && snapshot.data() != null) {
+        // Cast the snapshot to the expected type for the factory
+        final typedDoc = snapshot as DocumentSnapshot<Map<String, dynamic>>;
+        return Project.fromFirestore(typedDoc);
+      }
+      return null; // Document doesn't exist
+    } catch (e) {
+      print("Error getting project details synchronously for $projectId: $e");
+      return null; // Return null on error
+    }
   }
 
   // TODO: Add method to update project (e.g., add contributor, add clip)
@@ -204,9 +253,89 @@ class DatabaseService {
   // TODO: Add methods to get/stream clips for a project
   // Stream<List<VideoClip>> getVideoClipsForProject(String projectId) { ... }
 
+  // Get a stream of all video clips for a specific project
+  Stream<List<VideoClip>> getVideoClipsForProject(String projectId) {
+    return _db
+        .collection('projects')
+        .doc(projectId)
+        .collection('clips')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) {
+          try {
+            return snapshot.docs
+                .map((doc) {
+                  // Cast the document to the expected type
+                  final typedDoc = doc as DocumentSnapshot<Map<String, dynamic>>;
+                  return VideoClip.fromFirestore(typedDoc);
+                })
+                .toList();
+          } catch (e) {
+            print("Error mapping video clips for project $projectId: $e");
+            return <VideoClip>[];
+          }
+        });
+  }
+
+  // Get all video clips for a specific project synchronously
+  Future<List<VideoClip>> getVideoClipsForProjectSync(String projectId) async {
+    try {
+      final snapshot = await _db
+          .collection('projects')
+          .doc(projectId)
+          .collection('clips')
+          .orderBy('createdAt', descending: false) // Get in chronological order for compilation
+          .get();
+      
+      final clips = snapshot.docs
+          .map((doc) {
+            final typedDoc = doc as DocumentSnapshot<Map<String, dynamic>>;
+            return VideoClip.fromFirestore(typedDoc);
+          })
+          .toList();
+      
+      print("Fetched ${clips.length} clips for project $projectId synchronously");
+      return clips;
+    } catch (e) {
+      print("Error getting video clips synchronously for project $projectId: $e");
+      return <VideoClip>[];
+    }
+  }
+
   // TODO: Add method to delete a video clip (requires clip ID)
-  // Future<bool> deleteVideoClip(String projectId, String clipId) { ... }
   
+  // Delete a video clip by ID
+  Future<bool> deleteVideoClip(String projectId, String clipId) async {
+    try {
+      await _db
+          .collection('projects')
+          .doc(projectId)
+          .collection('clips')
+          .doc(clipId)
+          .delete();
+      
+      print("Video clip $clipId successfully deleted from project $projectId");
+      return true;
+    } catch (e) {
+      print("Error deleting video clip $clipId from project $projectId: $e");
+      return false;
+    }
+  }
+  
+  /// Updates a project with a compiled video URL
+  Future<void> updateProjectWithCompiledVideo(String projectId, String compiledVideoUrl) async {
+    try {
+      await _db.collection('projects').doc(projectId).update({
+        'compiledVideoUrl': compiledVideoUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      print("Project updated with compiled video URL");
+    } catch (e) {
+      print("Error updating project with compiled video URL: $e");
+      rethrow;
+    }
+  }
+
   // --- User Operations (Example) ---
   Future<Map<String, dynamic>?> getUserProfile(String userId) async {
      // Example: Fetch user profile data if stored separately

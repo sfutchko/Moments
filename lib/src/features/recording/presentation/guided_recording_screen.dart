@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io'; // Import File
+import 'dart:ui'; // For ImageFilter
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -172,12 +173,18 @@ class _GuidedRecordingScreenState extends State<GuidedRecordingScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Camera Preview fills the screen
-          Center(
-            child: AspectRatio(
-              aspectRatio: _controller!.value.isInitialized ? _controller!.value.aspectRatio : 1.0,
-              child: _controller!.value.isInitialized ? CameraPreview(_controller!) : Container(color: Colors.black),
-            ),
+          // Camera Preview fills the entire screen
+          SizedBox.expand(
+            child: _controller!.value.isInitialized 
+                ? FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _controller!.value.previewSize!.height,
+                      height: _controller!.value.previewSize!.width,
+                      child: CameraPreview(_controller!),
+                    ),
+                  )
+                : Container(color: Colors.black),
           ),
           
           // Overlay with Prompt and Timer
@@ -203,54 +210,97 @@ class _GuidedRecordingScreenState extends State<GuidedRecordingScreen> {
             ),
           ),
           
-          // Timer display
-          if (_isRecording)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 80, // Position below prompt
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '0:${_remainingTime.toString().padLeft(2, '0')}',
-                    style: GoogleFonts.nunito(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+          // Record button and controls at bottom
+          Positioned(
+            bottom: 30,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Record Button
+                GestureDetector(
+                  onTap: _isRecording ? _stopRecording : _startRecording,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.transparent,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 4,
+                      ),
+                    ),
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: _isRecording ? 32 : 60,
+                        height: _isRecording ? 32 : 60,
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(_isRecording ? 5 : 30),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-
-          // Record Button Area
-          Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: InkWell(
-                onTap: _isRecording ? _stopRecording : _startRecording,
-                child: Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _isRecording ? Colors.white : Colors.red.shade700,
-                    border: Border.all(
-                      color: _isRecording ? Colors.red.shade700 : Colors.white,
-                      width: 4,
+          ),
+          
+          // Timer and cancel row
+          if (_isRecording)
+            Positioned(
+              bottom: 130,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Timer display
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.timer, color: Colors.white, size: 16),
+                        const SizedBox(width: 5),
+                        Text(
+                          '0:${_remainingTime.toString().padLeft(2, '0')}',
+                          style: GoogleFonts.nunito(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Icon(
-                    _isRecording ? Icons.stop_rounded : Icons.circle,
-                    color: _isRecording ? Colors.red.shade700 : Colors.white,
-                    size: _isRecording ? 40 : 0, // Show stop icon only when recording
+                ],
+              ),
+            ),
+          
+          // Back button
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 16,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(25),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black.withOpacity(0.2),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
                   ),
                 ),
               ),

@@ -9,8 +9,10 @@ import 'firebase_options.dart'; // Import generated options
 import 'src/services/auth_service.dart'; // Import AuthService
 import 'src/services/database_service.dart'; // Import DatabaseService
 import 'src/services/storage_service.dart'; // Import StorageService
+import 'src/services/invitation_service.dart'; // Import InvitationService
 // Import the wrapper
 import 'src/features/authentication/presentation/auth_wrapper.dart';
+import 'src/features/invitation/presentation/join_project_screen.dart'; // Import JoinProjectScreen
 // TODO: Import home screen (e.g., HomeScreen) if needed directly by main routes later
 
 Future<void> main() async { // Make main async
@@ -36,8 +38,55 @@ Future<void> main() async { // Make main async
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final InvitationService _invitationService = InvitationService();
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  
+  @override
+  void initState() {
+    super.initState();
+    // Initialize deep link handling
+    _initDynamicLinks();
+  }
+  
+  void _initDynamicLinks() {
+    // Using built-in Flutter deep link handling (flutter_deeplinking_enabled = true)
+    print('Deep link handling now relies on platform-native mechanisms');
+    
+    // App links and universal links are now handled by the OS and Flutter's built-in
+    // mechanisms. This is configured in AndroidManifest.xml and Info.plist.
+  }
+  
+  void _handleDynamicLink(Uri deepLink) {
+    print('Got deep link: $deepLink');
+    
+    // Handle join project links
+    if (deepLink.pathSegments.contains('join')) {
+      final String? projectId = deepLink.queryParameters['projectId'];
+      final String? inviterId = deepLink.queryParameters['inviterId'];
+      
+      if (projectId != null) {
+        // Navigate to the JoinProjectScreen
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (context) => JoinProjectScreen(
+                projectId: projectId,
+                inviterId: inviterId,
+              ),
+            ),
+          );
+        });
+      }
+    }
+  }
 
   // This widget is the root of your application.
   @override
@@ -62,10 +111,14 @@ class MyApp extends StatelessWidget {
         Provider<StorageService>(
           create: (_) => StorageService(),
         ),
-        // TODO: Add other providers (e.g., DatabaseService)
+        // Provide InvitationService
+        Provider<InvitationService>(
+          create: (_) => InvitationService(),
+        ),
       ],
       child: MaterialApp(
         title: 'Moments for Mom', // Updated App Title
+        navigatorKey: _navigatorKey, // Add navigator key for deep link navigation
         themeMode: ThemeMode.dark, // Force dark theme for now based on design
         theme: _buildTheme(Brightness.light), // Define light theme (optional)
         darkTheme: _buildTheme(Brightness.dark), // Define dark theme

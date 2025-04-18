@@ -49,21 +49,20 @@ class VideoClip {
 
 // Represents a collaborative video project
 class Project {
-  final String id; // Firestore document ID
+  final String id;
   final String title;
-  final String organizerId; // User ID of the creator
-  final String organizerName; // Optional: denormalized for display
+  final String organizerId;
+  final String organizerName;
   final Timestamp createdAt;
-  final Timestamp? deliveryDate; // For scheduled delivery
-  final List<String> contributorIds; // List of invited/joined user IDs
-  final String? finalVideoUrl; // URL of the compiled video
-  final String? themeId; // ID of the selected theme/template
-  final String? soundAccentId; // ID of the selected sound accent
-  final String? coverImageUrl; // Added field for cover image URL
+  final List<String> contributorIds;
+  final String? coverImageUrl;
+  final Timestamp? deliveryDate;
   final String? gradientColorHex1;
   final String? gradientColorHex2;
   final String? gradientColorHex3;
-  final String? occasion; // Add the new occasion field
+  final String? occasion;
+  final String? compiledVideoUrl; // URL to the compiled video file
+  // Add other fields as needed
 
   Project({
     required this.id,
@@ -71,63 +70,55 @@ class Project {
     required this.organizerId,
     required this.organizerName,
     required this.createdAt,
-    this.deliveryDate,
-    List<String>? contributorIds,
-    this.finalVideoUrl,
-    this.themeId,
-    this.soundAccentId,
+    required this.contributorIds,
     this.coverImageUrl,
+    this.deliveryDate,
     this.gradientColorHex1,
     this.gradientColorHex2,
     this.gradientColorHex3,
-    this.occasion, // Add to constructor
-  }) : contributorIds = contributorIds ?? [];
+    this.occasion,
+    this.compiledVideoUrl,
+  });
 
-  // Factory constructor to create a Project from a Firestore document
+  // Factory constructor from Firestore DocumentSnapshot
   factory Project.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     if (data == null) {
-      // Handle cases where data might be unexpectedly null, perhaps throw an error
-      // or return a default/error state Project object.
-      throw StateError('Missing data for Project ${doc.id}');
+      throw StateError('Missing data for project ${doc.id}');
     }
-
+    
     return Project(
       id: doc.id,
       title: data['title'] as String? ?? 'Untitled Moment',
       organizerId: data['organizerId'] as String? ?? '',
-      organizerName: data['organizerName'] as String? ?? '',
+      organizerName: data['organizerName'] as String? ?? 'Anonymous',
       createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
-      deliveryDate: data['deliveryDate'] as Timestamp?,
-      contributorIds: List<String>.from(data['contributorIds'] as List<dynamic>? ?? []),
-      finalVideoUrl: data['finalVideoUrl'] as String?,
-      themeId: data['themeId'] as String?,
-      soundAccentId: data['soundAccentId'] as String?,
+      contributorIds: List<String>.from(data['contributorIds'] ?? []),
       coverImageUrl: data['coverImageUrl'] as String?,
+      deliveryDate: data['deliveryDate'] as Timestamp?,
       gradientColorHex1: data['gradientColorHex1'] as String?,
       gradientColorHex2: data['gradientColorHex2'] as String?,
       gradientColorHex3: data['gradientColorHex3'] as String?,
-      occasion: data['occasion'] as String?, // Add occasion to factory
+      occasion: data['occasion'] as String?,
+      compiledVideoUrl: data['compiledVideoUrl'] as String?,
     );
   }
 
-  // TODO: Add method to convert to Firestore Map (toMap)
+  // Conversion to Map for Firestore
   Map<String, dynamic> toMap() {
     return {
       'title': title,
       'organizerId': organizerId,
       'organizerName': organizerName,
       'createdAt': createdAt,
-      'deliveryDate': deliveryDate,
       'contributorIds': contributorIds,
-      'finalVideoUrl': finalVideoUrl,
-      'themeId': themeId,
-      'soundAccentId': soundAccentId,
-      'coverImageUrl': coverImageUrl,
-      'gradientColorHex1': gradientColorHex1,
-      'gradientColorHex2': gradientColorHex2,
-      'gradientColorHex3': gradientColorHex3,
-      'occasion': occasion, // Add occasion to map
+      if (coverImageUrl != null) 'coverImageUrl': coverImageUrl,
+      if (deliveryDate != null) 'deliveryDate': deliveryDate,
+      if (gradientColorHex1 != null) 'gradientColorHex1': gradientColorHex1,
+      if (gradientColorHex2 != null) 'gradientColorHex2': gradientColorHex2,
+      if (gradientColorHex3 != null) 'gradientColorHex3': gradientColorHex3,
+      if (occasion != null) 'occasion': occasion,
+      if (compiledVideoUrl != null) 'compiledVideoUrl': compiledVideoUrl,
     };
   }
 } 

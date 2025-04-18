@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.example.mothers_day",
+      "sha256_cert_fingerprints": [
+        "Replace with your SHA-256 fingerprint from Android keystore"
+      ]
+    }
+  }
+] 

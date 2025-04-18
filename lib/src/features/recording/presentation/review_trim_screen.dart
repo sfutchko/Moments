@@ -91,6 +91,32 @@ class _ReviewTrimScreenState extends State<ReviewTrimScreen> {
     final String contributorId = user.uid;
     final String contributorName = user.displayName ?? user.email ?? 'Anonymous User'; 
     
+    // Ensure user is added as a contributor to the project before uploading
+    try {
+      print("Ensuring user $contributorId is added as a contributor to project ${widget.project.id}");
+      bool addedAsContributor = await dbService.addContributorToProject(
+        widget.project.id, 
+        contributorId,
+        contributorName
+      );
+      
+      if (!addedAsContributor) {
+        throw Exception("Failed to add user as contributor to the project");
+      }
+    } catch (e) {
+      print("Error adding user as contributor: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding you as a contributor: $e'), 
+            backgroundColor: Colors.red
+          )
+        );
+        setState(() => _isExporting = false);
+      }
+      return;
+    }
+    
     // 1. Generate Export Path
     final String fileName = 'trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4';
     final Directory extDir = await getTemporaryDirectory();
@@ -299,7 +325,7 @@ class _ReviewTrimScreenState extends State<ReviewTrimScreen> {
                           onPressed: _isExporting ? null : _exportAndUploadVideo,
                           child: _isExporting
                             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : Text('Export & Upload', style: GoogleFonts.nunito(color: Colors.white)),
+                            : Text('Upload', style: GoogleFonts.nunito(color: Colors.white)),
                         ),
                       ],
                     )
