@@ -2,11 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Represents a single video clip contribution
 class VideoClip {
-  final String id; // Unique ID for the clip
+  final String id; // Unique ID for the clip (Firestore doc ID)
   final String contributorId;
-  final String contributorName; // Or fetch separately?
+  final String contributorName; // Denormalized for display
   final String videoUrl; // URL to the video file in Cloud Storage
   final Timestamp createdAt;
+  final String prompt; // The prompt the user responded to
   // Add other relevant fields: duration, order, etc.
 
   VideoClip({
@@ -15,10 +16,35 @@ class VideoClip {
     required this.contributorName,
     required this.videoUrl,
     required this.createdAt,
+    required this.prompt, // Add prompt
   });
 
-  // TODO: Add factory constructor from Firestore DocumentSnapshot
-  // TODO: Add method to convert to Firestore Map
+  // Factory constructor from Firestore DocumentSnapshot
+  factory VideoClip.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    if (data == null) {
+      throw StateError('Missing data for VideoClip ${doc.id}');
+    }
+    return VideoClip(
+      id: doc.id,
+      contributorId: data['contributorId'] as String? ?? '',
+      contributorName: data['contributorName'] as String? ?? 'Anonymous',
+      videoUrl: data['videoUrl'] as String? ?? '',
+      createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+      prompt: data['prompt'] as String? ?? '', // Add prompt
+    );
+  }
+
+  // Method to convert to Firestore Map
+  Map<String, dynamic> toMap() {
+    return {
+      'contributorId': contributorId,
+      'contributorName': contributorName,
+      'videoUrl': videoUrl,
+      'createdAt': createdAt,
+      'prompt': prompt, // Add prompt
+    };
+  }
 }
 
 // Represents a collaborative video project
@@ -30,7 +56,6 @@ class Project {
   final Timestamp createdAt;
   final Timestamp? deliveryDate; // For scheduled delivery
   final List<String> contributorIds; // List of invited/joined user IDs
-  final List<VideoClip> clips; // Embedded or reference to subcollection?
   final String? finalVideoUrl; // URL of the compiled video
   final String? themeId; // ID of the selected theme/template
   final String? soundAccentId; // ID of the selected sound accent
@@ -48,7 +73,6 @@ class Project {
     required this.createdAt,
     this.deliveryDate,
     List<String>? contributorIds,
-    List<VideoClip>? clips,
     this.finalVideoUrl,
     this.themeId,
     this.soundAccentId,
@@ -57,8 +81,7 @@ class Project {
     this.gradientColorHex2,
     this.gradientColorHex3,
     this.occasion, // Add to constructor
-  }) : contributorIds = contributorIds ?? [],
-       clips = clips ?? [];
+  }) : contributorIds = contributorIds ?? [];
 
   // Factory constructor to create a Project from a Firestore document
   factory Project.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -69,9 +92,6 @@ class Project {
       throw StateError('Missing data for Project ${doc.id}');
     }
 
-    // TODO: Implement proper deserialization for nested VideoClip list if embedded
-    // For now, clips list is initialized empty.
-
     return Project(
       id: doc.id,
       title: data['title'] as String? ?? 'Untitled Moment',
@@ -80,7 +100,6 @@ class Project {
       createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
       deliveryDate: data['deliveryDate'] as Timestamp?,
       contributorIds: List<String>.from(data['contributorIds'] as List<dynamic>? ?? []),
-      // clips: [], // Placeholder for clips deserialization
       finalVideoUrl: data['finalVideoUrl'] as String?,
       themeId: data['themeId'] as String?,
       soundAccentId: data['soundAccentId'] as String?,
@@ -101,8 +120,6 @@ class Project {
       'createdAt': createdAt,
       'deliveryDate': deliveryDate,
       'contributorIds': contributorIds,
-      // Clips might need special handling if they are complex objects
-      // 'clips': clips.map((clip) => clip.toMap()).toList(), // Example if VideoClip has toMap
       'finalVideoUrl': finalVideoUrl,
       'themeId': themeId,
       'soundAccentId': soundAccentId,

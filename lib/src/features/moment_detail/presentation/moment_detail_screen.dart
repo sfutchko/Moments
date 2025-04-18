@@ -13,6 +13,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../models/project.dart'; // Import the Project model
 import '../../../services/database_service.dart'; // Import DatabaseService
 import '../../../services/storage_service.dart'; // Import StorageService
+import '../../recording/presentation/prompt_display_screen.dart'; // Import PromptDisplayScreen
 // TODO: Import other services if needed (e.g., DatabaseService for updates)
 
 // Convert to StatefulWidget
@@ -503,10 +504,10 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
                                   
                                   // Video Button
                                   Center(
-                                    child: _buildVideoButton(context),
-             ),
-             const SizedBox(height: 24),
-             
+                                    child: _buildVideoButton(context, displayMoment),
+                                  ),
+                                  const SizedBox(height: 24),
+
                                   // Placeholder for video list/grid
                                   Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -769,48 +770,57 @@ class _MomentDetailScreenState extends State<MomentDetailScreen> {
     );
   }
 
-  // Helper for Video Button - cleaner styling
-  Widget _buildVideoButton(BuildContext context) {
+  // Helper for Video Button - extracted for cleaner code
+  Widget _buildVideoButton(BuildContext context, Project moment) { // Pass moment
     return ClipRRect(
       borderRadius: BorderRadius.circular(16.0),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+        filter: ImageFilter.blur(sigmaX: 6.0, sigmaY: 6.0),
         child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.3),
+                Colors.white.withOpacity(0.25),
                 Colors.white.withOpacity(0.15),
               ],
             ),
             borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: Colors.white.withOpacity(0.4), width: 0.5),
+            border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.7),
           ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () { print('Add Video Tapped'); },
+              onTap: () {
+                print('Add Video Tapped - Navigating to Prompt Screen');
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PromptDisplayScreen(project: moment), // Navigate to prompt screen
+                  ),
+                );
+              }, 
               splashColor: Colors.white.withOpacity(0.1),
               highlightColor: Colors.white.withOpacity(0.05),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(
                       Icons.videocam_rounded,
-                      size: 20,
+                      size: 22,
                       color: Colors.white,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Text(
                       'Add Your Video Clip',
                       style: GoogleFonts.nunito(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
+                        letterSpacing: 0.3,
                         color: Colors.white,
                       ),
                     ),

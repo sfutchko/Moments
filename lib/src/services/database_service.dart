@@ -1,8 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/project.dart'; // Assuming project.dart is in models directory
+import 'package:rxdart/rxdart.dart';
 
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Reference to the projects collection
   CollectionReference get projectsCollection => _db.collection('projects');
@@ -55,26 +58,60 @@ class DatabaseService {
 
   // Get a stream of projects where the user is either the organizer or a contributor
   Stream<List<Project>> getMomentsForUser(String userId) {
-    return projectsCollection
-        .where('contributorIds', arrayContains: userId)
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((snapshot) {
+    print('Fetching moments for user ID: $userId');
+
+    // Query for projects where user is the organizer
+    final organizerQuery = _db
+        .collection('projects')
+        .where('organizerId', isEqualTo: userId);
+
+    // Query for projects where user is a contributor
+    final contributorQuery = _db
+        .collection('projects')
+        .where('contributorIds', arrayContains: userId);
+
+    // Combine the results of both queries
+    // Note: This might fetch projects where the user is both organizer and contributor twice.
+    // We will deduplicate based on the project ID.
+    return CombineLatestStream.combine2(
+      organizerQuery.snapshots(),
+      contributorQuery.snapshots(),
+      (QuerySnapshot<Map<String, dynamic>> organizerSnapshot,
+       QuerySnapshot<Map<String, dynamic>> contributorSnapshot) {
+        final Map<String, Project> projectsMap = {};
+
+        // Process organizer projects
+        for (var doc in organizerSnapshot.docs) {
           try {
-            // Use the factory constructor for mapping
-            return snapshot.docs.map((doc) {
-                 // Ensure the document data is cast correctly for the factory
-                 final typedDoc = doc as QueryDocumentSnapshot<Map<String, dynamic>>;
-                 return Project.fromFirestore(typedDoc);
-            }).toList();
+            final project = Project.fromFirestore(doc);
+            projectsMap[project.id] = project;
           } catch (e) {
-             print("Error mapping moments snapshot: $e");
-             return <Project>[]; // Return empty list on mapping error
+            print('Error parsing organizer project ${doc.id}: $e');
           }
-        }).handleError((error) {
-           print("Error fetching moments stream for user $userId: $error");
-           return <Project>[]; // Return empty list on stream error
-        });
+        }
+
+        // Process contributor projects, adding only if not already present
+        for (var doc in contributorSnapshot.docs) {
+          try {
+            final project = Project.fromFirestore(doc);
+            // Add only if the ID isn't already in the map (avoids duplicates)
+            projectsMap.putIfAbsent(project.id, () => project);
+          } catch (e) {
+            print('Error parsing contributor project ${doc.id}: $e');
+          }
+        }
+        
+        // Sort by createdAt descending (most recent first)
+        final projectList = projectsMap.values.toList();
+        projectList.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        
+        print('Combined and deduplicated moments count: ${projectList.length}');
+        return projectList;
+      },
+    ).handleError((error) {
+      print("Error combining project streams: $error");
+      return <Project>[]; // Return empty list on error
+    });
   }
 
   // Delete a project by ID
@@ -132,4 +169,53 @@ class DatabaseService {
 
   // TODO: Add methods for clip subcollection if used
 
+  // Add a new video clip to a project's subcollection
+  Future<bool> addVideoClipToProject({
+    required String projectId,
+    required String videoUrl,
+    required String contributorId,
+    required String contributorName, 
+    required String prompt, // Add prompt
+  }) async {
+    try {
+      final clipData = VideoClip(
+        id: '', // Firestore will generate ID
+        contributorId: contributorId,
+        contributorName: contributorName, 
+        videoUrl: videoUrl,
+        createdAt: Timestamp.now(), 
+        prompt: prompt,
+      ).toMap(); // Use the toMap method
+
+      await _db
+          .collection('projects')
+          .doc(projectId)
+          .collection('clips') // Add to 'clips' subcollection
+          .add(clipData);
+      
+      print("Video clip added successfully to project $projectId");
+      return true;
+    } catch (e) {
+      print("Error adding video clip to project $projectId: $e");
+      return false;
+    }
+  }
+
+  // TODO: Add methods to get/stream clips for a project
+  // Stream<List<VideoClip>> getVideoClipsForProject(String projectId) { ... }
+
+  // TODO: Add method to delete a video clip (requires clip ID)
+  // Future<bool> deleteVideoClip(String projectId, String clipId) { ... }
+  
+  // --- User Operations (Example) ---
+  Future<Map<String, dynamic>?> getUserProfile(String userId) async {
+     // Example: Fetch user profile data if stored separately
+     try {
+       DocumentSnapshot doc = await _db.collection('users').doc(userId).get();
+       return doc.data() as Map<String, dynamic>?;
+     } catch (e) {
+       print("Error fetching user profile: $e");
+       return null;
+     }
+  }
 } 
